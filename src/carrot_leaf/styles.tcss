@@ -1,0 +1,316 @@
+Screen {
+    background: $background;
+}
+
+/* ---------- header ---------- */
+
+#logo {
+    height: auto;
+    padding: 1 2 0 2;
+}
+
+MainScreen.-short #logo {
+    display: none;
+}
+
+#url-row {
+    height: auto;
+    margin: 1 2 0 2;
+}
+
+#url {
+    width: 1fr;
+    border: round $primary 50%;
+    background: $surface;
+    padding: 0 1;
+}
+
+#url:focus {
+    border: round $primary;
+    background-tint: $primary 4%;
+}
+
+#status-line {
+    height: 1;
+    margin: 0 3;
+    color: $text-muted;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---------- video card ---------- */
+
+VideoCard {
+    height: auto;
+    min-height: 13;
+    margin: 1 2 0 2;
+    padding: 0 1;
+    border: round $secondary 50%;
+    border-title-color: $secondary;
+    border-title-style: bold;
+    background: $surface;
+}
+
+#card-switcher {
+    height: auto;
+}
+
+#card-empty {
+    height: 11;
+    content-align: center middle;
+    text-align: center;
+    color: $text-muted;
+}
+
+#card-loading {
+    height: 11;
+    align: center middle;
+}
+
+#card-loading LoadingIndicator {
+    width: 8;
+    height: 1;
+    color: $primary;
+}
+
+#loading-text {
+    width: auto;
+    color: $text-muted;
+}
+
+#card-error {
+    height: auto;
+    padding: 1 1;
+}
+
+#error-hint {
+    margin: 1 0;
+    color: $text-muted;
+}
+
+#error-actions, #actions, #dialog-actions {
+    height: auto;
+}
+
+#error-actions Button, #actions Button, #dialog-actions Button {
+    margin-right: 2;
+    min-width: 14;
+}
+
+#card-info {
+    height: auto;
+    padding: 1 0;
+}
+
+#thumb {
+    margin-right: 2;
+}
+
+#details {
+    height: auto;
+    width: 1fr;
+}
+
+#video-title {
+    color: $text;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#video-meta {
+    color: $text;
+    margin-bottom: 1;
+}
+
+#action-hint {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+/* ---------- download list ---------- */
+
+DownloadQueue {
+    height: 1fr;
+    min-height: 5;
+    margin: 1 2;
+    padding: 0 1;
+    border: round $panel-lighten-2;
+    border-title-color: $text-muted;
+    background: $surface;
+    scrollbar-size-vertical: 1;
+}
+
+#queue-empty {
+    color: $text-muted;
+    padding: 1 0;
+}
+
+JobRow {
+    padding: 0 0 1 0;
+}
+
+.job-head {
+    height: 1;
+}
+
+.job-title {
+    width: 1fr;
+    text-style: bold;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+.job-kind {
+    width: auto;
+    color: $primary;
+    margin-left: 2;
+}
+
+.job-body {
+    height: 1;
+}
+
+JobRow ProgressBar {
+    width: 32;
+}
+
+JobRow Bar {
+    width: 30;
+}
+
+JobRow Bar > .bar--bar {
+    color: $primary;
+    background: $panel;
+}
+
+JobRow Bar > .bar--indeterminate {
+    color: $accent;
+    background: $panel;
+}
+
+JobRow.-done Bar > .bar--complete,
+JobRow.-done Bar > .bar--bar {
+    color: $success;
+}
+
+JobRow.-failed Bar > .bar--bar {
+    color: $error;
+}
+
+.job-status {
+    width: 1fr;
+    color: $text-muted;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---------- dialogs ---------- */
+
+ModalScreen {
+    align: center middle;
+    background: $background 70%;
+}
+
+#dialog {
+    width: 76;
+    max-width: 95%;
+    height: auto;
+    max-height: 95%;
+    padding: 1 2;
+    border: round $primary;
+    background: $surface;
+}
+
+#dialog.cookies {
+    width: 60;
+}
+
+#dialog-title {
+    margin-bottom: 1;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#kind {
+    height: auto;
+}
+
+.pickers {
+    height: auto;
+    padding-top: 1;
+}
+
+.picker {
+    width: 1fr;
+    height: auto;
+}
+
+.picker:first-of-type {
+    margin-right: 2;
+}
+
+.picker-label, .field-label {
+    color: $secondary;
+    text-style: bold;
+    margin-bottom: 0;
+}
+
+.field-label {
+    margin-top: 1;
+}
+
+.picker OptionList {
+    height: 8;
+    border: round $panel-lighten-2;
+    background: $surface;
+}
+
+.picker OptionList:focus {
+    border: round $primary;
+}
+
+#summary {
+    margin: 1 0;
+}
+
+#folder-row {
+    height: auto;
+}
+
+#folder {
+    width: 1fr;
+    border: round $panel-lighten-2;
+}
+
+#folder:focus {
+    border: round $primary;
+}
+
+#browse {
+    margin-left: 1;
+}
+
+#tree {
+    height: 12;
+    border: round $panel-lighten-2;
+    background: $surface;
+}
+
+#folder-error {
+    height: auto;
+}
+
+#cookies {
+    width: 40;
+}
+
+#cookies-note {
+    margin: 1 0;
+}
+
+#browsers {
+    height: auto;
+    max-height: 10;
+    margin: 1 0;
+    border: round $panel-lighten-2;
+}

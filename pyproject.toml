@@ -1,0 +1,59 @@
+[project]
+name = "carrot-leaf"
+version = "0.1.0"
+description = "A good-looking terminal app for downloading and converting YouTube (and 1000+ other sites) videos, powered by yt-dlp."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Yore Des", email = "designsbyyore@gmail.com" }
+]
+requires-python = ">=3.10"
+keywords = ["youtube", "yt-dlp", "downloader", "tui", "terminal", "converter", "mp3"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "yt-dlp[default]>=2026.8.19",
+    "textual>=8.2",
+    "pillow>=10",
+    "platformdirs>=4",
+    "tomli-w>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "static-ffmpeg>=3.0",
+    "deno>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Yore-Des/carrot-leaf"
+Issues = "https://github.com/Yore-Des/carrot-leaf/issues"
+
+[project.scripts]
+carrot = "carrot_leaf.cli:main"
+carrot-leaf = "carrot_leaf.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.23,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
