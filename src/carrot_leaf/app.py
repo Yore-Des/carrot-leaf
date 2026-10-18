@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from textual.app import App
 
 from . import config
@@ -22,7 +24,13 @@ class CarrotLeafApp(App):
     def on_mount(self) -> None:
         for theme in THEMES:
             self.register_theme(theme)
-        self.theme = "carrot"
+        saved = self.settings.theme
+        self.theme = saved if saved in self.available_themes else "carrot"
+        self.theme_changed_signal.subscribe(self, self._remember_theme)
+
+    def _remember_theme(self, theme) -> None:
+        if theme.name != self.settings.theme:
+            self.save_settings(replace(self.settings, theme=theme.name))
 
     def get_default_screen(self) -> MainScreen:
         return MainScreen(self.initial_url)

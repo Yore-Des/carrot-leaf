@@ -67,16 +67,18 @@ class MainScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static(id="logo")
+        yield Static(id="status-line")
         with Horizontal(id="url-row"):
+            yield Static("›", id="prompt")
             yield Input(
                 placeholder="Paste a video link…  (YouTube, Vimeo, SoundCloud, X, …)", id="url"
             )
-        yield Static(id="status-line")
         yield VideoCard(id="card")
         yield DownloadQueue(id="queue")
         yield Footer()
 
     def on_mount(self) -> None:
+        self.query_one("#url-row").border_title = "url"
         self._render_logo(self.size.width)
         self._render_status()
         self.app.theme_changed_signal.subscribe(self, self._theme_changed)
@@ -95,9 +97,13 @@ class MainScreen(Screen):
 
     def _render_logo(self, width: int) -> None:
         colors = self.app.theme_variables
+        shade = "darken" if self.app.current_theme.dark else "lighten"
         self.query_one("#logo", Static).update(
             logo.render(
-                width - 4, colors.get("primary", "#FF8A1F"), colors.get("secondary", "#7BC74D")
+                width - 4,
+                face=colors["primary"],
+                side=colors[f"primary-{shade}-3"],
+                shadow=colors["panel"],
             )
         )
 
@@ -111,7 +117,7 @@ class MainScreen(Screen):
         if self.settings.cookies_browser:
             bits.append(f"[dim]cookies[/dim] {self.settings.cookies_browser}")
         bits.append(f"[dim]saving to[/dim] {escape(short_path(str(self.settings.download_path)))}")
-        self.query_one("#status-line", Static).update("   ".join(bits))
+        self.query_one("#status-line", Static).update("  [dim]·[/dim]  ".join(bits))
 
     def _theme_changed(self, _theme) -> None:
         self._render_logo(self.size.width)

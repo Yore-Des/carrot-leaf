@@ -1,3 +1,5 @@
+/* Layout: logo + URL bar on top, then sections split by labelled rules on a 2-column gutter. */
+
 Screen {
     background: $background;
 }
@@ -5,50 +7,77 @@ Screen {
 /* ---------- header ---------- */
 
 #logo {
+    width: 100%;
     height: auto;
     padding: 1 2 0 2;
+    text-align: center;
 }
 
 MainScreen.-short #logo {
     display: none;
 }
 
+#status-line {
+    height: 1;
+    margin: 1 2 0 2;
+    color: $text-muted;
+    text-align: center;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
 #url-row {
     height: auto;
     margin: 1 2 0 2;
+    border: solid $primary 50%;
+    border-title-color: $primary;
+    border-title-style: bold;
+}
+
+#url-row:focus-within {
+    border: solid $primary;
+}
+
+#prompt {
+    width: 2;
+    padding-left: 1;
+    color: $primary;
+    text-style: bold;
 }
 
 #url {
     width: 1fr;
-    border: round $primary 50%;
-    background: $surface;
+    height: 1;
+    border: none;
     padding: 0 1;
+    background: $background;
 }
 
 #url:focus {
-    border: round $primary;
-    background-tint: $primary 4%;
+    border: none;
 }
 
-#status-line {
-    height: 1;
-    margin: 0 3;
-    color: $text-muted;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
+Input:focus {
+    background-tint: $foreground 0%;
+}
+
+/* ---------- section rules ---------- */
+
+VideoCard, DownloadQueue {
+    margin: 1 2 0 2;
+    padding: 1 0 0 0;
+    border: none;
+    border-top: solid $panel;
+    border-title-align: left;
+    border-title-style: bold;
+    background: $background;
 }
 
 /* ---------- video card ---------- */
 
 VideoCard {
     height: auto;
-    min-height: 13;
-    margin: 1 2 0 2;
-    padding: 0 1;
-    border: round $secondary 50%;
-    border-title-color: $secondary;
-    border-title-style: bold;
-    background: $surface;
+    border-title-color: $primary;
 }
 
 #card-switcher {
@@ -56,15 +85,12 @@ VideoCard {
 }
 
 #card-empty {
-    height: 11;
-    content-align: center middle;
-    text-align: center;
+    height: auto;
     color: $text-muted;
 }
 
 #card-loading {
-    height: 11;
-    align: center middle;
+    height: 1;
 }
 
 #card-loading LoadingIndicator {
@@ -80,7 +106,6 @@ VideoCard {
 
 #card-error {
     height: auto;
-    padding: 1 1;
 }
 
 #error-hint {
@@ -88,22 +113,12 @@ VideoCard {
     color: $text-muted;
 }
 
-#error-actions, #actions, #dialog-actions {
-    height: auto;
-}
-
-#error-actions Button, #actions Button, #dialog-actions Button {
-    margin-right: 2;
-    min-width: 14;
-}
-
 #card-info {
     height: auto;
-    padding: 1 0;
 }
 
 #thumb {
-    margin-right: 2;
+    margin-right: 3;
 }
 
 #details {
@@ -118,13 +133,66 @@ VideoCard {
 }
 
 #video-meta {
-    color: $text;
     margin-bottom: 1;
 }
 
 #action-hint {
-    margin-top: 1;
+    width: auto;
     color: $text-muted;
+}
+
+/* ---------- buttons: plain text, a solid chip when focused ---------- */
+
+Button, Button.-primary, Button.-success, Button.-default {
+    width: auto;
+    min-width: 0;
+    height: 1;
+    padding: 0 1;
+    border: none;
+    background: $background;
+    color: $primary;
+    text-style: bold;
+}
+
+Button:hover, Button.-primary:hover, Button.-success:hover, Button.-default:hover {
+    background: $panel;
+    border: none;
+}
+
+Button:focus, Button.-primary:focus, Button.-success:focus, Button.-default:focus {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+Button.-active {
+    background: $primary-darken-1;
+    border: none;
+}
+
+#cancel {
+    color: $text-muted;
+}
+
+#cancel:focus {
+    background: $foreground-muted;
+    color: $background;
+}
+
+#error-actions, #actions, #dialog-actions {
+    height: auto;
+}
+
+#error-actions Button, #actions Button, #dialog-actions Button {
+    margin-right: 2;
+}
+
+#actions {
+    offset-x: -1;
+}
+
+#actions Button {
+    margin-right: 2;
 }
 
 /* ---------- download list ---------- */
@@ -132,17 +200,12 @@ VideoCard {
 DownloadQueue {
     height: 1fr;
     min-height: 5;
-    margin: 1 2;
-    padding: 0 1;
-    border: round $panel-lighten-2;
     border-title-color: $text-muted;
-    background: $surface;
     scrollbar-size-vertical: 1;
 }
 
 #queue-empty {
     color: $text-muted;
-    padding: 1 0;
 }
 
 JobRow {
@@ -151,6 +214,24 @@ JobRow {
 
 .job-head {
     height: 1;
+}
+
+.job-mark {
+    width: 2;
+    color: $text-muted;
+    text-style: bold;
+}
+
+JobRow.-running .job-mark {
+    color: $primary;
+}
+
+JobRow.-done .job-mark {
+    color: $success;
+}
+
+JobRow.-failed .job-mark {
+    color: $error;
 }
 
 .job-title {
@@ -168,6 +249,7 @@ JobRow {
 
 .job-body {
     height: 1;
+    padding-left: 2;
 }
 
 JobRow ProgressBar {
@@ -204,6 +286,29 @@ JobRow.-failed Bar > .bar--bar {
     text-overflow: ellipsis;
 }
 
+/* ---------- footer ---------- */
+
+Footer {
+    height: 2;
+    padding: 0 2;
+    border-top: solid $panel;
+    background: $background;
+}
+
+FooterKey {
+    background: $background;
+}
+
+FooterKey .footer-key--key {
+    color: $primary;
+    background: $background;
+}
+
+FooterKey .footer-key--description {
+    color: $text-muted;
+    background: $background;
+}
+
 /* ---------- dialogs ---------- */
 
 ModalScreen {
@@ -217,8 +322,8 @@ ModalScreen {
     height: auto;
     max-height: 95%;
     padding: 1 2;
-    border: round $primary;
-    background: $surface;
+    border: solid $primary;
+    background: $background;
 }
 
 #dialog.cookies {
@@ -229,6 +334,10 @@ ModalScreen {
     margin-bottom: 1;
     text-wrap: nowrap;
     text-overflow: ellipsis;
+}
+
+#dialog-actions {
+    margin-top: 1;
 }
 
 #kind {
@@ -250,7 +359,7 @@ ModalScreen {
 }
 
 .picker-label, .field-label {
-    color: $secondary;
+    color: $primary;
     text-style: bold;
     margin-bottom: 0;
 }
@@ -261,16 +370,16 @@ ModalScreen {
 
 .picker OptionList {
     height: 8;
-    border: round $panel-lighten-2;
-    background: $surface;
+    border: solid $panel;
+    background: $background;
 }
 
 .picker OptionList:focus {
-    border: round $primary;
+    border: solid $primary;
 }
 
 #summary {
-    margin: 1 0;
+    margin: 1 0 0 0;
 }
 
 #folder-row {
@@ -279,21 +388,22 @@ ModalScreen {
 
 #folder {
     width: 1fr;
-    border: round $panel-lighten-2;
+    border: solid $panel;
+    background: $background;
 }
 
 #folder:focus {
-    border: round $primary;
+    border: solid $primary;
 }
 
 #browse {
-    margin-left: 1;
+    margin: 1 0 0 1;
 }
 
 #tree {
     height: 12;
-    border: round $panel-lighten-2;
-    background: $surface;
+    border: solid $panel;
+    background: $background;
 }
 
 #folder-error {
@@ -312,5 +422,6 @@ ModalScreen {
     height: auto;
     max-height: 10;
     margin: 1 0;
-    border: round $panel-lighten-2;
+    border: solid $panel;
+    background: $background;
 }

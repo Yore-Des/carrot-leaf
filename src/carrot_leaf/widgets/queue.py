@@ -48,6 +48,7 @@ class JobRow(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="job-head"):
+            yield Static(classes="job-mark")
             yield Static(classes="job-title")
             yield Static(classes="job-kind")
         with Horizontal(classes="job-body"):
@@ -65,6 +66,9 @@ class JobRow(Vertical):
         status = self.query_one(".job-status", Static)
         self.set_class(job.state == runner.DONE, "-done")
         self.set_class(job.state == runner.FAILED, "-failed")
+        self.set_class(job.state not in (runner.DONE, runner.FAILED, runner.QUEUED), "-running")
+        mark = {runner.DONE: "✓", runner.FAILED: "✗", runner.QUEUED: "·"}.get(job.state, "↓")
+        self.query_one(".job-mark", Static).update(mark)
 
         if job.state == runner.DONE:
             bar.update(total=100, progress=100)
@@ -94,10 +98,10 @@ class JobRow(Vertical):
 
 class DownloadQueue(VerticalScroll):
     def compose(self) -> ComposeResult:
-        yield Static("[dim]Nothing yet. Downloads show up here.[/dim]", id="queue-empty")
+        yield Static("Nothing yet. Downloads show up here.", id="queue-empty")
 
     def on_mount(self) -> None:
-        self.border_title = "Downloads"
+        self.border_title = "downloads"
 
     def add(self, job: Job) -> None:
         self.query_one("#queue-empty").display = False
@@ -117,4 +121,4 @@ class DownloadQueue(VerticalScroll):
             bits.append("1 downloading")
         if queued:
             bits.append(f"{queued} waiting")
-        self.border_title = "Downloads" + (f" · {', '.join(bits)}" if bits else "")
+        self.border_title = "downloads" + (f" · {', '.join(bits)}" if bits else "")

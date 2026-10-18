@@ -1,69 +1,64 @@
-"""The Carrot Leaf logo at three sizes, picked to fit the terminal width."""
+"""The CARROT wordmark: extruded 3D blocks when there's room, flat text when there isn't."""
 
 from __future__ import annotations
 
 from rich.text import Text
 
 CARROT = [
-    ("  \\ | /  ", "leaf"),
-    ("   \\|/   ", "leaf"),
-    (" ▐█████▌ ", "carrot"),
-    ("  ▐███▌  ", "carrot"),
-    ("   ▐█▌   ", "carrot"),
-    ("    ▀    ", "carrot"),
-]
-
-BIG_CARROT = [
-    " ██████╗ █████╗ ██████╗ ██████╗  ██████╗ ████████╗",
-    "██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔═══██╗╚══██╔══╝",
-    "██║     ███████║██████╔╝██████╔╝██║   ██║   ██║   ",
-    "██║     ██╔══██║██╔══██╗██╔══██╗██║   ██║   ██║   ",
-    "╚██████╗██║  ██║██║  ██║██║  ██║╚██████╔╝   ██║   ",
-    " ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝   ",
-]
-BIG_LEAF = [
-    "██╗     ███████╗ █████╗ ███████╗",
-    "██║     ██╔════╝██╔══██╗██╔════╝",
-    "██║     █████╗  ███████║█████╗  ",
-    "██║     ██╔══╝  ██╔══██║██╔══╝  ",
-    "███████╗███████╗██║  ██║██║     ",
-    "╚══════╝╚══════╝╚═╝  ╚═╝╚═╝     ",
+    " ██████  █████  ██████  ██████   ██████  ████████",
+    "██      ██   ██ ██   ██ ██   ██ ██    ██    ██   ",
+    "██      ███████ ██████  ██████  ██    ██    ██   ",
+    "██      ██   ██ ██   ██ ██   ██ ██    ██    ██   ",
+    " ██████ ██   ██ ██   ██ ██   ██  ██████     ██   ",
 ]
 SMALL = [
-    "  ___   _   ___ ___  ___ _____   _    ___   _   ___ ",
-    " / __| /_\\ | _ \\ _ \\/ _ \\_   _| | |  | __| /_\\ | __|",
-    "| (__ / _ \\|   /   / (_) || |   | |__| _| / _ \\| _| ",
-    " \\___/_/ \\_\\_|_\\_|_\\\\___/ |_|   |____|___/_/ \\_\\_|  ",
+    "  ___   _   ___ ___  ___ _____ ",
+    " / __| /_\\ | _ \\ _ \\/ _ \\_   _|",
+    "| (__ / _ \\|   /   / (_) || |  ",
+    " \\___/_/ \\_\\_|_\\_|_\\\\___/ |_|  ",
 ]
-SMALL_SPLIT = 31  # column where "LEAF" starts in SMALL
 
-BIG_WIDTH = len(CARROT[0]) + 2 + len(BIG_CARROT[0]) + 1 + len(BIG_LEAF[0])
-SMALL_WIDTH = len(CARROT[0]) + 2 + len(SMALL[0])
+DEPTH = 2  # extrusion: one step to the right and down per level
+FACE, SIDE, SHADOW = "█", "▓", "░"
 
 
-def render(width: int, carrot: str, leaf: str) -> Text:
-    """Logo that fits in `width` columns, coloured with the two theme colours."""
-    styles = {"carrot": f"bold {carrot}", "leaf": f"bold {leaf}"}
+def extrude(rows: list[str]) -> list[str]:
+    """Face cells become FACE; the copies behind them, offset down-right, become SIDE then SHADOW."""
+    height, width = len(rows), len(rows[0])
+    grid = [[" "] * (width + DEPTH) for _ in range(height + DEPTH)]
+    for depth, glyph in ((2, SHADOW), (1, SIDE)):
+        for r, row in enumerate(rows):
+            for c, ch in enumerate(row):
+                if ch != " ":
+                    grid[r + depth][c + depth] = glyph
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            if ch != " ":
+                grid[r][c] = FACE
+    return ["".join(line) for line in grid]
+
+
+BIG = extrude(CARROT)
+BIG_WIDTH = len(BIG[0])
+SMALL_WIDTH = len(SMALL[0])
+
+
+def render(width: int, face: str, side: str, shadow: str) -> Text:
+    """Logo that fits in `width` columns.
+
+    Every line is padded to the same width so the block centres as one piece.
+    """
     out = Text(no_wrap=True, overflow="crop")
     if width >= BIG_WIDTH:
-        for i, (art, part) in enumerate(CARROT):
-            out.append(art, styles[part])
-            out.append("  ")
-            out.append(BIG_CARROT[i], styles["carrot"])
-            out.append(" ")
-            out.append(BIG_LEAF[i], styles["leaf"])
-            out.append("\n")
+        styles = {FACE: face, SIDE: side, SHADOW: shadow}
+        for i, line in enumerate(BIG):
+            if i:
+                out.append("\n")
+            for ch in line:
+                out.append(ch, styles.get(ch))
+        return out
     elif width >= SMALL_WIDTH:
-        art_rows = CARROT[1:5]
-        for i, (art, part) in enumerate(art_rows):
-            out.append(art, styles[part])
-            out.append("  ")
-            out.append(SMALL[i][:SMALL_SPLIT], styles["carrot"])
-            out.append(SMALL[i][SMALL_SPLIT:], styles["leaf"])
-            out.append("\n")
+        out.append("\n".join(SMALL), f"bold {face}")
     else:
-        out.append("\\|/ ", styles["leaf"])
-        out.append("CARROT ", styles["carrot"])
-        out.append("LEAF", styles["leaf"])
-    out.rstrip()
+        out.append("CARROT", f"bold {face}")
     return out

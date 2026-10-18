@@ -36,6 +36,7 @@ class Settings:
     last_audio_quality: str = "best"
     # Browser cookies stay off until the user opts in for a login-only video.
     cookies_browser: str = ""
+    theme: str = "carrot"
 
     def __post_init__(self) -> None:
         if not self.download_dir:

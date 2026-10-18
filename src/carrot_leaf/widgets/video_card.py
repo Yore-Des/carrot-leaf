@@ -14,6 +14,7 @@ EMPTY_HINT = (
     "[b]Paste a link above[/b] to get started.\n\n"
     "[dim]YouTube and 1,000+ other sites work. Enter loads a link you typed.[/dim]"
 )
+LEADER = 10  # metadata values line up this many columns after the key
 
 
 class VideoCard(Vertical):
@@ -36,14 +37,12 @@ class VideoCard(Vertical):
                     yield Static(id="video-title")
                     yield Static(id="video-meta")
                     with Horizontal(id="actions"):
-                        yield Button("Download", id="download", variant="primary")
-                        yield Button("Convert", id="convert", variant="success")
-                    yield Static(
-                        "[dim]d[/dim] best MP4   [dim]c[/dim] pick a format", id="action-hint"
-                    )
+                        yield Button("\\[d] download", id="download")
+                        yield Button("\\[c] convert", id="convert")
+                        yield Static("best mp4 · pick a format", id="action-hint")
 
     def on_mount(self) -> None:
-        self.border_title = "Video"
+        self.border_title = "video"
 
     def _show(self, name: str) -> None:
         self.query_one(ContentSwitcher).current = name
@@ -71,12 +70,20 @@ class VideoCard(Vertical):
     def show_info(self, info: VideoInfo) -> None:
         self.query_one("#thumb", Thumbnail).image = None
         self.query_one("#video-title", Static).update(f"[b]{_escape(info.title)}[/b]")
-        site = f"   [dim]on[/dim] {_escape(info.extractor)}" if info.extractor else ""
-        res = f"   [dim]up to[/dim] {info.max_height}p" if info.max_height else ""
+        rows = [
+            ("channel", info.channel),
+            ("length", info.duration_text),
+            ("uploaded", info.date_text),
+        ]
+        if info.max_height:
+            rows.append(("quality", f"up to {info.max_height}p"))
+        if info.extractor:
+            rows.append(("site", info.extractor))
         self.query_one("#video-meta", Static).update(
-            f"[$secondary]●[/] {_escape(info.channel)}\n"
-            f"[dim]length[/dim] {info.duration_text}   [dim]uploaded[/dim] {info.date_text}"
-            f"{res}{site}"
+            "\n".join(
+                f"[dim]{key}[/dim] [$foreground-disabled]{'·' * (LEADER - len(key))}[/] {_escape(value)}"
+                for key, value in rows
+            )
         )
         self._show("card-info")
 

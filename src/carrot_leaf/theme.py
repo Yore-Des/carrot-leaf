@@ -1,34 +1,38 @@
-"""Carrot orange + leaf green, in dark and light variants."""
+"""Carrot orange, in dark and light variants.
+
+Every colour is one of the 256 xterm colours, so the themes look the same in terminals
+without true colour (macOS Terminal.app) as in ones with it. Green is kept for success only.
+"""
 
 from textual.theme import Theme
 
 CARROT_DARK = Theme(
     name="carrot",
-    primary="#FF8A1F",
-    secondary="#7BC74D",
-    accent="#FFB45C",
-    warning="#FFC145",
-    error="#FF5E57",
-    success="#7BC74D",
-    foreground="#F5EBDD",
-    background="#17120E",
-    surface="#211912",
-    panel="#2E2219",
+    primary="#ff8700",
+    secondary="#ffaf5f",
+    accent="#ffaf5f",
+    warning="#ffd700",
+    error="#ff5f5f",
+    success="#87d75f",
+    foreground="#e4e4e4",
+    background="#121212",
+    surface="#121212",
+    panel="#303030",
     dark=True,
 )
 
 CARROT_LIGHT = Theme(
     name="carrot-light",
-    primary="#D96200",
-    secondary="#3F8F2A",
-    accent="#B85A00",
-    warning="#B07800",
-    error="#C9302C",
-    success="#3F8F2A",
-    foreground="#2B1D12",
-    background="#FFF8F0",
-    surface="#FFF0E0",
-    panel="#F5DFC8",
+    primary="#d75f00",
+    secondary="#af5f00",
+    accent="#af5f00",
+    warning="#af8700",
+    error="#d70000",
+    success="#5f8700",
+    foreground="#1c1c1c",
+    background="#eeeeee",
+    surface="#eeeeee",
+    panel="#d0d0d0",
     dark=False,
 )
 

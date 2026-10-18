@@ -11,7 +11,7 @@ from textual.widget import Widget
 class Thumbnail(Widget):
     DEFAULT_CSS = """
     Thumbnail {
-        width: 34;
+        width: 36;
         height: 9;
         content-align: center middle;
         color: $text-muted;
@@ -40,9 +40,9 @@ class Thumbnail(Widget):
 
 
 def half_blocks(image, width: int, height: int) -> Text:
-    from PIL import ImageOps
+    from PIL import Image, ImageOps
 
-    img = ImageOps.fit(image, (width, height * 2))
+    img = ImageOps.fit(image, (width, height * 2), Image.Resampling.LANCZOS)
     px = img.load()
     out = Text(no_wrap=True, overflow="crop")
     for y in range(0, height * 2, 2):
