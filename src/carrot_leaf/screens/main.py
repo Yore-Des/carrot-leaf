@@ -36,9 +36,9 @@ PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
 
 
 # Always shown, unlike Textual's Footer, which hides letter keys while the URL bar has focus.
-# Each key is clickable.
+# Each label is clickable.
 KEYS = "   ".join(
-    f"[@click={action}][b $primary]{key}[/] [dim]{label}[/dim][/]"
+    f"[b $primary]{key}[/] [@click={action}]{label}[/]"
     for key, label, action in (
         ("d", "download", "screen.download"),
         ("c", "convert", "screen.convert"),
@@ -52,7 +52,7 @@ KEYS = "   ".join(
     )
 )
 
-TAB_HINT = "[@click=screen.leave_url][b $primary]tab[/] [dim]use keys[/dim][/]"
+TAB_HINT = "[b $primary]tab[/] [@click=screen.leave_url]use keys[/]"
 
 
 def rich_color(value: str | None, fallback: str) -> str:
@@ -130,13 +130,13 @@ class MainScreen(Screen):
 
     def _render_logo(self, width: int) -> None:
         colors = self.app.theme_variables
-        shade = "darken" if self.app.current_theme.dark else "lighten"
+        steps = ("primary-lighten-1", "primary", "primary", "primary-darken-1", "primary-darken-2")
+        shadow = "primary-darken-3" if self.app.current_theme.dark else "primary-lighten-2"
         self.query_one("#logo", Static).update(
             logo.render(
                 width - 4,
-                face=rich_color(colors.get("primary"), "#ff8700"),
-                side=rich_color(colors.get(f"primary-{shade}-3"), "#af5f00"),
-                shadow=rich_color(colors.get("panel"), "#303030"),
+                gradient=[rich_color(colors.get(step), "#ff8700") for step in steps],
+                shadow=rich_color(colors.get(shadow), "#af5f00"),
             )
         )
 

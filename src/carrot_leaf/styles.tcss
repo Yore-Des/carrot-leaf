@@ -293,6 +293,12 @@ JobRow.-failed Bar > .bar--bar {
     background: $background;
     text-wrap: nowrap;
     text-overflow: ellipsis;
+    link-style: none;
+    link-color: $text-muted;
+    link-background: $background;
+    link-style-hover: bold;
+    link-color-hover: $primary;
+    link-background-hover: $panel;
 }
 
 /* ---------- dialogs ---------- */
