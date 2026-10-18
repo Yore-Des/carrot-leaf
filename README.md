@@ -52,6 +52,7 @@ Paste a link anywhere in the app. The video's details and thumbnail show up, the
 | ----- | ------------------------------------------------------- |
 | `d`   | **Download**: best quality, saved as MP4                |
 | `c`   | **Convert**: pick a video or audio format and a quality |
+| `l`   | Supported sites: search the list or paste a link to check |
 | `s`   | Settings: download folder, browser cookies              |
 | `o`   | Show the last downloaded file in Finder / Explorer      |
 | `u`   | Update yt-dlp                                           |

@@ -283,27 +283,16 @@ JobRow.-failed Bar > .bar--bar {
     text-overflow: ellipsis;
 }
 
-/* ---------- footer ---------- */
+/* ---------- key bar ---------- */
 
-Footer {
+#keys {
+    dock: bottom;
     height: 2;
     padding: 0 2;
     border-top: solid $panel;
     background: $background;
-}
-
-FooterKey {
-    background: $background;
-}
-
-FooterKey .footer-key--key {
-    color: $primary;
-    background: $background;
-}
-
-FooterKey .footer-key--description {
-    color: $text-muted;
-    background: $background;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* ---------- dialogs ---------- */
@@ -325,6 +314,31 @@ ModalScreen {
 
 #dialog.cookies {
     width: 60;
+}
+
+#dialog.sites {
+    width: 64;
+    height: 30;
+}
+
+#site-search {
+    border: solid $panel;
+    background: $background;
+}
+
+#site-search:focus {
+    border: solid $primary;
+}
+
+#site-result {
+    height: 1;
+    margin: 1 0;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#sites {
+    height: 1fr;
 }
 
 #dialog-title {

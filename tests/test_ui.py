@@ -197,3 +197,28 @@ async def test_every_theme_renders(fakes, theme, tmp_path):
         await pilot.resize_terminal(60, 24)
         await pilot.pause()
         app.save_screenshot(path=str(tmp_path))
+
+
+async def test_sites_list_searches_and_checks_links(fakes):
+    from carrot_leaf.screens.sites import SitesScreen
+
+    app = CarrotLeafApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        app.screen.query_one("#url").blur()
+        await pilot.press("l")
+        assert await settle(pilot, lambda: isinstance(app.screen, SitesScreen))
+        sites = app.screen.query_one("#sites")
+        everything = sites.option_count
+        assert everything > 1000
+        search = app.screen.query_one("#site-search")
+        search.value = "vimeo"
+        await pilot.pause()
+        assert 0 < sites.option_count < everything
+        search.value = "https://vimeo.com/76979871"
+        await pilot.pause()
+        assert "Supported" in str(app.screen.query_one("#site-result").render())
+        search.value = "https://example.com/some/page"
+        await pilot.pause()
+        assert "No dedicated support" in str(app.screen.query_one("#site-result").render())
+        await pilot.press("escape")
+        assert await settle(pilot, lambda: not isinstance(app.screen, SitesScreen))

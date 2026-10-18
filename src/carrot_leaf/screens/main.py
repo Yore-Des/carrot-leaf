@@ -18,7 +18,7 @@ from textual.color import Color
 from textual.containers import Horizontal
 from textual.events import Paste, Resize
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Input, Static
+from textual.widgets import Button, Input, Static
 
 from .. import config, logo
 from ..engine import errors, runner, update
@@ -29,9 +29,30 @@ from ..widgets.queue import DownloadQueue, short_path
 from ..widgets.video_card import VideoCard
 from .convert import ConvertScreen
 from .settings import CookiesScreen, SettingsScreen
+from .sites import SitesScreen
 
 URL_RE = re.compile(r"^\s*(https?://)?([\w-]+\.)+[a-z]{2,}(/\S*)?\s*$", re.I)
 PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
+
+
+# Always shown, unlike Textual's Footer, which hides letter keys while the URL bar has focus.
+# Each key is clickable.
+KEYS = "   ".join(
+    f"[@click={action}][b $primary]{key}[/] [dim]{label}[/dim][/]"
+    for key, label, action in (
+        ("d", "download", "screen.download"),
+        ("c", "convert", "screen.convert"),
+        ("l", "sites", "screen.sites"),
+        ("s", "settings", "screen.settings"),
+        ("o", "open", "screen.reveal"),
+        ("u", "update", "screen.update"),
+        ("esc", "url bar", "screen.focus_url"),
+        ("^p", "themes", "app.command_palette"),
+        ("q", "quit", "app.quit"),
+    )
+)
+
+TAB_HINT = "[@click=screen.leave_url][b $primary]tab[/] [dim]use keys[/dim][/]"
 
 
 def rich_color(value: str | None, fallback: str) -> str:
@@ -50,6 +71,7 @@ class MainScreen(Screen):
     BINDINGS = [
         Binding("d", "download", "Download"),
         Binding("c", "convert", "Convert"),
+        Binding("l", "sites", "Sites"),
         Binding("s", "settings", "Settings"),
         Binding("o", "reveal", "Show file"),
         Binding("u", "update", "Update yt-dlp"),
@@ -84,12 +106,13 @@ class MainScreen(Screen):
             )
         yield VideoCard(id="card")
         yield DownloadQueue(id="queue")
-        yield Footer()
+        yield Static(id="keys")
 
     def on_mount(self) -> None:
         self.query_one("#url-row").border_title = "url"
         self._render_logo(self.size.width)
         self._render_status()
+        self._render_keys()
         self.app.theme_changed_signal.subscribe(self, self._theme_changed)
         url_input = self.query_one("#url", Input)
         url_input.focus()
@@ -115,6 +138,18 @@ class MainScreen(Screen):
                 shadow=rich_color(colors.get("panel"), "#303030"),
             )
         )
+
+    def on_descendant_focus(self) -> None:
+        self._render_keys()
+
+    def on_descendant_blur(self) -> None:
+        self._render_keys()
+
+    def _render_keys(self) -> None:
+        # Letters type into the URL bar while it has focus, so say how to reach the shortcuts.
+        typing = isinstance(self.focused, Input)
+        prefix = f"{TAB_HINT}   " if typing else ""
+        self.query_one("#keys", Static).update(prefix + KEYS)
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
@@ -243,6 +278,12 @@ class MainScreen(Screen):
             self.notify(f"Saving to {short_path(new.download_dir)}", title="Settings saved")
 
         self.app.push_screen(SettingsScreen(self.settings), saved)
+
+    def action_leave_url(self) -> None:
+        self.focus_next()
+
+    def action_sites(self) -> None:
+        self.app.push_screen(SitesScreen())
 
     def action_reveal(self) -> None:
         if not self.last_file or not Path(self.last_file).exists():
