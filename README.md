@@ -7,7 +7,7 @@
  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝
 </pre>
 
-Carrot Leaf downloads and converts videos in your terminal. Paste a link from YouTube or
+Carrot downloads and converts videos in your terminal. Paste a link from YouTube or
 any of the 1,300+ sites yt-dlp knows, then press `d` to save it as MP4 or `c` to pick a
 format. It runs on [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
 [Textual](https://textual.textualize.io/).
