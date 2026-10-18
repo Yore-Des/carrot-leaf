@@ -159,7 +159,7 @@ def all_theme_names():
 
 
 @pytest.mark.parametrize("theme", all_theme_names())
-async def test_every_theme_renders(fakes, theme):
+async def test_every_theme_renders(fakes, theme, tmp_path):
     """Each theme in the command palette survives every screen and job state."""
     from PIL import Image
 
@@ -187,7 +187,7 @@ async def test_every_theme_renders(fakes, theme):
                 else screen_cls(app.settings)
             )
             await pilot.pause()
-            app.save_screenshot()  # forces a full render of the current screen
+            app.save_screenshot(path=str(tmp_path))  # forces a full render of the current screen
             app.pop_screen()
             await pilot.pause()
         screen.load("https://www.youtube.com/watch?v=login")
@@ -196,4 +196,4 @@ async def test_every_theme_renders(fakes, theme):
         )
         await pilot.resize_terminal(60, 24)
         await pilot.pause()
-        app.save_screenshot()
+        app.save_screenshot(path=str(tmp_path))

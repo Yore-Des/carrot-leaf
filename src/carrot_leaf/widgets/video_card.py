@@ -28,9 +28,9 @@ class VideoCard(Vertical):
                 yield Static(id="error-message")
                 yield Static(id="error-hint")
                 with Horizontal(id="error-actions"):
-                    yield Button("Use browser cookies", id="use-cookies", variant="primary")
-                    yield Button("Update yt-dlp", id="update-ytdlp", variant="primary")
-                    yield Button("Try again", id="retry")
+                    yield Button("use browser cookies", id="use-cookies", variant="primary")
+                    yield Button("update yt-dlp", id="update-ytdlp", variant="primary")
+                    yield Button("try again", id="retry")
             with Horizontal(id="card-info"):
                 yield Thumbnail(id="thumb")
                 with Vertical(id="details"):
@@ -56,7 +56,10 @@ class VideoCard(Vertical):
 
     def show_error(self, err: errors.FriendlyError) -> None:
         self.query_one("#error-message", Static).update(f"[b $error]✗ {_escape(err.message)}[/]")
-        self.query_one("#error-hint", Static).update(_escape(err.hint))
+        hint = _escape(err.hint)
+        if err.detail and err.detail != err.message:
+            hint += f"\n\n[dim]yt-dlp: {_escape(err.detail)}[/dim]"
+        self.query_one("#error-hint", Static).update(hint)
         self.query_one("#use-cookies").display = err.kind == errors.LOGIN
         self.query_one("#update-ytdlp").display = err.kind == errors.OUTDATED
         self.query_one("#retry").display = err.kind in (

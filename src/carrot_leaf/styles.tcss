@@ -187,9 +187,6 @@ Button.-active {
     margin-right: 2;
 }
 
-#actions {
-    offset-x: -1;
-}
 
 #actions Button {
     margin-right: 2;

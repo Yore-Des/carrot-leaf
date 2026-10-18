@@ -19,6 +19,7 @@ class FriendlyError:
     kind: str
     message: str
     hint: str = ""
+    detail: str = ""  # yt-dlp's own first line, shown small so odd cases can be diagnosed
 
 
 _RULES: list[tuple[str, tuple[str, ...], str, str]] = [
@@ -27,6 +28,13 @@ _RULES: list[tuple[str, tuple[str, ...], str, str]] = [
         ("playlist or channel",),
         "That's a playlist or channel.",
         "Paste a link to a single video.",
+    ),
+    (
+        LOGIN,
+        ("not a bot",),
+        "YouTube wants to check you're not a bot.",
+        "It does this after many requests from one connection and usually clears within an "
+        "hour. Using cookies from a browser where you're signed in to YouTube gets past it now.",
     ),
     (
         LOGIN,
@@ -108,7 +116,7 @@ def explain(exc: BaseException | str) -> FriendlyError:
     low = text.lower()
     for kind, needles, message, hint in _RULES:
         if any(n in low for n in needles):
-            return FriendlyError(kind, message, hint)
+            return FriendlyError(kind, message, hint, clean(text))
     if "ffmpeg" in low and ("not found" in low or "not installed" in low):
         return FriendlyError(
             GENERIC, "ffmpeg is missing.", "Install ffmpeg, or reinstall Carrot Leaf."

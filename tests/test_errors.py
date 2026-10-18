@@ -34,6 +34,13 @@ def test_kinds(text, kind):
     assert errors.explain(text).kind == kind
 
 
+def test_bot_check_is_explained():
+    e = errors.explain("ERROR: [youtube] abc: Sign in to confirm you’re not a bot. Use --cookies")
+    assert e.kind == errors.LOGIN
+    assert "bot" in e.message
+    assert e.detail.startswith("Sign in to confirm")
+
+
 def test_generic_strips_prefix():
     e = errors.explain("ERROR: [generic] xyz: Something odd happened\nmore")
     assert e.kind == errors.GENERIC
