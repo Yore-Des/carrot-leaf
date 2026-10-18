@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="carrot",
-        description="Download or convert videos from YouTube and 1,000+ other sites.",
+        description="Download or convert videos from YouTube and 1,300+ other sites.",
         epilog="Run `carrot update` to update yt-dlp.",
     )
     parser.add_argument("url", nargs="?", default="", help="video link to open straight away")

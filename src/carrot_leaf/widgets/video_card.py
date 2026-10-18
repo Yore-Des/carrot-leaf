@@ -12,7 +12,7 @@ from .thumbnail import Thumbnail
 
 EMPTY_HINT = (
     "[b]Paste a link above[/b] to get started.\n\n"
-    "[dim]YouTube and 1,000+ other sites work. Enter loads a link you typed.[/dim]"
+    "[dim]YouTube and 1,300+ other sites work. Enter loads a link you typed.[/dim]"
 )
 LEADER = 10  # metadata values line up this many columns after the key
 

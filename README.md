@@ -7,29 +7,30 @@
  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝
 </pre>
 
-A good-looking terminal app for downloading and converting videos from YouTube and
-1,000+ other sites. Paste a link, then **Download** or **Convert**. Built on
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [Textual](https://textual.textualize.io/).
+Carrot Leaf downloads and converts videos in your terminal. Paste a link from YouTube or
+any of the 1,300+ sites yt-dlp knows, then press `d` to save it as MP4 or `c` to pick a
+format. It runs on [yt-dlp](https://github.com/yt-dlp/yt-dlp) and
+[Textual](https://textual.textualize.io/).
 
 ## Install
 
-**macOS / Linux**
+macOS and Linux:
 
 ```sh
 curl -LsSf https://raw.githubusercontent.com/Yore-Des/carrot-leaf/main/install.sh | sh
 ```
 
-**Windows** (PowerShell)
+Windows, in PowerShell:
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Yore-Des/carrot-leaf/main/install.ps1 | iex"
 ```
 
-The script installs [uv](https://docs.astral.sh/uv/) if you don't have it, then installs
-Carrot Leaf with its own Python. Your system Python doesn't matter, and you don't need to
-install ffmpeg or anything else.
+The script installs [uv](https://docs.astral.sh/uv/) if it's missing, then installs Carrot
+Leaf with its own copy of Python. You don't need Python, ffmpeg or anything else set up
+first.
 
-Already use uv or pipx?
+If you already use uv or pipx:
 
 ```sh
 uv tool install carrot-leaf
@@ -45,22 +46,27 @@ carrot update          # update yt-dlp
 carrot --version
 ```
 
-Paste a link anywhere in the app. The video's details and thumbnail show up, then:
+Paste a link and the title, length, upload date and a thumbnail appear. The bottom bar
+lists every key:
 
-| Key   | Does                                                    |
-| ----- | ------------------------------------------------------- |
-| `d`   | **Download**: best quality, saved as MP4                |
-| `c`   | **Convert**: pick a video or audio format and a quality |
-| `l`   | Supported sites: search the list or paste a link to check |
-| `s`   | Settings: download folder, browser cookies              |
-| `t`   | Pick a theme                                            |
-| `o`   | Show the last downloaded file in Finder / Explorer      |
-| `u`   | Update yt-dlp                                           |
-| `esc` | Back to the URL bar                                     |
-| `q`   | Quit                                                    |
+| Key   | Does                                                       |
+| ----- | ---------------------------------------------------------- |
+| `d`   | Download at the best quality, as MP4                       |
+| `c`   | Convert: pick a video or audio format and a quality        |
+| `l`   | List supported sites. Search by name, or paste a link to check it |
+| `s`   | Settings: download folder and browser cookies              |
+| `t`   | Pick a theme                                               |
+| `o`   | Show the last download in Finder or Explorer               |
+| `u`   | Update yt-dlp                                              |
+| `tab` | Leave the URL bar so the letter keys work                  |
+| `esc` | Back to the URL bar                                        |
+| `q`   | Quit                                                       |
 
-You can paste another link while a download is running. Jobs wait in line and run one
-at a time.
+While the URL bar has focus, letters go into the link. Press `tab` first, or click a key
+in the bottom bar.
+
+You can paste the next link while a download runs. Downloads queue up and run one at a
+time.
 
 ### Formats
 
@@ -69,50 +75,62 @@ at a time.
 | MP4, MKV, WebM, MOV, GIF  | MP3, M4A, Opus, FLAC, WAV, OGG     |
 | best, 2160p … 360p        | best, 320 / 192 / 128 kbps         |
 
-Carrot Leaf only offers resolutions the video actually has. Files get the title, artist
-and cover art embedded where the format supports it.
+The quality list only shows resolutions the video has. Where the format allows it, the
+file gets the title, artist and cover art.
 
 ### Where files go
 
-Files are saved to your Downloads folder as `Title [video-id].ext`. Change the folder with
-`s`. If a file with the same name exists, the new one is saved as `Title [id] (2).ext`.
+Downloads land in your Downloads folder as `Title [video-id].ext`. Press `s` to pick
+another folder. If a file with that name already exists, the new one becomes
+`Title [video-id] (2).ext`.
 
-Settings are stored in:
+Settings, including your theme, live in:
 
 - macOS: `~/Library/Application Support/carrot-leaf/config.toml`
 - Linux: `~/.config/carrot-leaf/config.toml`
 - Windows: `%LOCALAPPDATA%\carrot-leaf\config.toml`
 
-### Age-restricted and members-only videos
+### Themes
 
-These need you to be signed in. When Carrot Leaf hits one, it offers to use the cookies
-from a browser where you're signed in (Chrome, Firefox, Safari, Edge, Brave, …). This is
-off until you pick a browser, and you can turn it off again in Settings. On a Mac you may
-see a Keychain prompt the first time.
+Carrot and Carrot light are the defaults. Both use only the 256 standard terminal
+colours, so they look the same in macOS Terminal as in iTerm2, Ghostty or Kitty. Press
+`t` to try the others. The app remembers your pick.
+
+### Videos that need you signed in
+
+Age-restricted and members-only videos need a YouTube login. When Carrot Leaf hits one,
+it offers to borrow the cookies from a browser where you're signed in: Chrome, Firefox,
+Safari, Edge, Brave, Opera, Vivaldi or Chromium. Cookies stay off until you pick a
+browser, and you can switch them off again in Settings. On a Mac, expect a Keychain
+prompt the first time.
+
+YouTube sometimes asks you to prove you're not a bot. That happens after a lot of
+requests from one connection, not because of the video, and it usually clears within an
+hour. Browser cookies get you past it right away.
 
 ### When downloads break
 
-Sites change often, and YouTube most of all, so yt-dlp ships fixes every few weeks.
-Carrot Leaf checks for a new yt-dlp when it starts and shows a notice if one is out.
-Press `u` or run `carrot update`.
+Sites change how they serve video, YouTube more than most, and yt-dlp ships a fix every
+few weeks. Carrot Leaf checks for a new yt-dlp at startup and tells you when one is out.
+Press `u` or run `carrot update` to install it.
 
-### Updates to Carrot Leaf
+### Updates
 
-Carrot Leaf keeps itself up to date. While it's open it checks for a new release, and if
-there is one it installs it in the background when you quit, so the next launch is the new
-version. This works for installs made with the install script, `uv tool` or `pipx`. To turn
-it off, set `CARROT_NO_AUTO_UPDATE=1`.
+Carrot Leaf updates itself. While it's open, it checks PyPI for a newer release. If it
+finds one, it installs it in the background after you quit, and your next launch runs
+the new version. This works for the install script, `uv tool` and `pipx`. Set
+`CARROT_NO_AUTO_UPDATE=1` to turn it off.
 
 ### ffmpeg and Deno
 
-Converting needs ffmpeg, and YouTube needs a JavaScript runtime (Deno). If they're
-already installed, Carrot Leaf uses them. If not, it uses bundled copies: Deno comes with
-the package, and ffmpeg is downloaded once (about 70 MB) the first time it's needed.
+Converting needs ffmpeg, and YouTube needs Deno to run its JavaScript. Carrot Leaf uses
+your own copies if you have them. If not, Deno ships with the package, and ffmpeg
+downloads once (about 70 MB) the first time a conversion needs it.
 
 ## Uninstall
 
 ```sh
-uv tool uninstall carrot-leaf
+uv tool uninstall carrot-leaf     # or: pipx uninstall carrot-leaf
 ```
 
 ## Development
@@ -126,12 +144,12 @@ CARROT_LIVE=1 uv run pytest         # also run real downloads
 uv run ruff check src tests && uv run ruff format src tests
 ```
 
-Releases: bump `version` in `pyproject.toml`, then push a `vX.Y.Z` tag. GitHub Actions
-publishes to PyPI.
+To release, bump `version` in `pyproject.toml` and push a `vX.Y.Z` tag. GitHub Actions
+builds it and publishes to PyPI.
 
 ## Please be nice
 
-Only download videos you have the right to download, and respect each site's terms.
+Only download videos you have the right to download, and follow each site's terms.
 
 ## License
 
