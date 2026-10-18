@@ -74,8 +74,8 @@ class ConvertScreen(ModalScreen[Choice | None]):
                                 yield OptionList(id=f"{kind}-quality")
             yield Static(id="summary")
             with Horizontal(id="dialog-actions"):
-                yield Button("Download", id="go", variant="primary")
-                yield Button("Cancel", id="cancel")
+                yield Button("download", id="go", variant="primary")
+                yield Button("cancel", id="cancel")
 
     def on_mount(self) -> None:
         s = self.settings
@@ -126,7 +126,7 @@ class ConvertScreen(ModalScreen[Choice | None]):
         from ..widgets.queue import short_path
 
         where = escape(short_path(str(self.settings.download_path)))
-        text = f"[b $primary]{c.label}[/]  [dim]→[/dim] {where}" if c else ""
+        text = f"[b]{c.label}[/b]  [dim]→ {where}[/dim]" if c else ""
         self.query_one("#summary", Static).update(text)
 
     @on(OptionList.OptionHighlighted)

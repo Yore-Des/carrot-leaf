@@ -359,8 +359,7 @@ ModalScreen {
 }
 
 .picker-label, .field-label {
-    color: $primary;
-    text-style: bold;
+    color: $text-muted;
     margin-bottom: 0;
 }
 
@@ -369,13 +368,7 @@ ModalScreen {
 }
 
 .picker OptionList {
-    height: 8;
-    border: solid $panel;
-    background: $background;
-}
-
-.picker OptionList:focus {
-    border: solid $primary;
+    height: 10;
 }
 
 #summary {
@@ -424,4 +417,74 @@ ModalScreen {
     margin: 1 0;
     border: solid $panel;
     background: $background;
+}
+
+/* ---------- lists, tabs, selects: grey at rest, one solid accent chip on focus ---------- */
+
+OptionList {
+    border: solid $panel;
+    background: $background;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $background;
+    scrollbar-background-hover: $background;
+    scrollbar-background-active: $background;
+    scrollbar-color: $panel;
+    scrollbar-color-hover: $primary;
+    scrollbar-color-active: $primary;
+    scrollbar-corner-color: $background;
+}
+
+OptionList:focus {
+    border: solid $primary;
+    background-tint: $foreground 0%;
+}
+
+OptionList > .option-list--option-highlighted {
+    color: $foreground;
+    background: $panel;
+    text-style: bold;
+}
+
+OptionList:focus > .option-list--option-highlighted {
+    color: $background;
+    background: $primary;
+    text-style: bold;
+}
+
+OptionList > .option-list--option-hover {
+    background: $panel;
+}
+
+Tabs Tab {
+    color: $text-muted;
+    background: $background;
+}
+
+Tabs Tab.-active {
+    color: $primary;
+    text-style: bold;
+}
+
+Tabs:focus Tab.-active {
+    color: $background;
+    background: $primary;
+}
+
+Tabs Underline > .underline--bar {
+    color: $primary;
+    background: $panel;
+}
+
+Select > SelectCurrent {
+    border: solid $panel;
+    background: $background;
+}
+
+Select:focus > SelectCurrent {
+    border: solid $primary;
+    background-tint: $foreground 0%;
+}
+
+Select > SelectOverlay {
+    border: solid $primary;
 }

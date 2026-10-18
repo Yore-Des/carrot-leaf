@@ -150,3 +150,50 @@ async def test_logo_fits(fakes, width):
         await pilot.pause()
         logo = app.screen.query_one("#logo")
         assert logo.size.width <= width
+
+
+def all_theme_names():
+    from carrot_leaf.theme import THEMES
+
+    return sorted(set(CarrotLeafApp().available_themes) | {t.name for t in THEMES})
+
+
+@pytest.mark.parametrize("theme", all_theme_names())
+async def test_every_theme_renders(fakes, theme):
+    """Each theme in the command palette survives every screen and job state."""
+    from PIL import Image
+
+    from carrot_leaf.engine.options import DOWNLOAD
+    from carrot_leaf.engine.runner import Job
+
+    app = CarrotLeafApp()
+    async with app.run_test(size=(120, 50)) as pilot:
+        app.theme = theme
+        screen = app.screen
+        screen.load(URL)
+        assert await settle(pilot, lambda: screen.info is not None)
+        screen.query_one(main_screen.VideoCard).set_thumbnail(Image.new("RGB", (64, 36), "teal"))
+        queue = screen.query_one(main_screen.DownloadQueue)
+        for state in (runner.QUEUED, runner.DOWNLOADING, runner.DONE, runner.FAILED):
+            job = Job(url=URL, title=state, choice=DOWNLOAD)
+            job.state, job.fraction, job.status = state, 0.5, "Downloading"
+            job.error = Exception("boom")
+            queue.add(job)
+        await pilot.pause()
+        for screen_cls in (ConvertScreen, SettingsScreen):
+            app.push_screen(
+                screen_cls(screen.info, app.settings)
+                if screen_cls is ConvertScreen
+                else screen_cls(app.settings)
+            )
+            await pilot.pause()
+            app.save_screenshot()  # forces a full render of the current screen
+            app.pop_screen()
+            await pilot.pause()
+        screen.load("https://www.youtube.com/watch?v=login")
+        assert await settle(
+            pilot, lambda: screen.query_one("#card-switcher").current == "card-error"
+        )
+        await pilot.resize_terminal(60, 24)
+        await pilot.pause()
+        app.save_screenshot()

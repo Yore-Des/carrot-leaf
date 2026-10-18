@@ -95,6 +95,13 @@ Sites change often, and YouTube most of all, so yt-dlp ships fixes every few wee
 Carrot Leaf checks for a new yt-dlp when it starts and shows a notice if one is out.
 Press `u` or run `carrot update`.
 
+### Updates to Carrot Leaf
+
+Carrot Leaf keeps itself up to date. While it's open it checks for a new release, and if
+there is one it installs it in the background when you quit, so the next launch is the new
+version. This works for installs made with the install script, `uv tool` or `pipx`. To turn
+it off, set `CARROT_NO_AUTO_UPDATE=1`.
+
 ### ffmpeg and Deno
 
 Converting needs ffmpeg, and YouTube needs a JavaScript runtime (Deno). If they're

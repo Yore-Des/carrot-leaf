@@ -24,7 +24,16 @@ def main(argv: list[str] | None = None) -> int:
 
     from .app import CarrotLeafApp
 
-    CarrotLeafApp(initial_url=args.url).run()
+    app = CarrotLeafApp(initial_url=args.url)
+    app.run()
+    if app.pending_app_update:
+        from .engine import update
+
+        if update.start_self_upgrade():
+            print(
+                f"Updating Carrot Leaf {__version__} → {app.pending_app_update} in the background."
+                " It'll be ready next time you run carrot."
+            )
     return 0
 
 

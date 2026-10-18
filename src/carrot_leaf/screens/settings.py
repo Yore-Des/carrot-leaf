@@ -52,7 +52,7 @@ class SettingsScreen(ModalScreen[Settings | None]):
             yield Label("Save downloads to", classes="field-label")
             with Horizontal(id="folder-row"):
                 yield Input(self.settings.download_dir, id="folder")
-                yield Button("Browse", id="browse")
+                yield Button("browse", id="browse")
             yield FolderTree(Path.home(), id="tree")
             yield Static(id="folder-error")
             yield Label(
@@ -70,8 +70,8 @@ class SettingsScreen(ModalScreen[Settings | None]):
                 id="cookies-note",
             )
             with Horizontal(id="dialog-actions"):
-                yield Button("Save", id="save", variant="primary")
-                yield Button("Cancel", id="cancel")
+                yield Button("save", id="save", variant="primary")
+                yield Button("cancel", id="cancel")
 
     def on_mount(self) -> None:
         self.query_one("#tree").display = False
@@ -131,7 +131,7 @@ class CookiesScreen(ModalScreen[str | None]):
             )
             yield OptionList(*(Option(name, id=key) for name, key in BROWSERS), id="browsers")
             with Horizontal(id="dialog-actions"):
-                yield Button("Cancel", id="cancel")
+                yield Button("cancel", id="cancel")
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()

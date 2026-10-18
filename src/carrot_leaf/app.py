@@ -19,6 +19,8 @@ class CarrotLeafApp(App):
     def __init__(self, initial_url: str = "") -> None:
         super().__init__()
         self.initial_url = initial_url
+        # Set when PyPI has a newer Carrot Leaf; the CLI starts the upgrade after the app exits.
+        self.pending_app_update: str | None = None
         self.settings = config.load()
 
     def on_mount(self) -> None:

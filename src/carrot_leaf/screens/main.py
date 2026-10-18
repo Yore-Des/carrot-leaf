@@ -14,6 +14,7 @@ from rich.markup import escape
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.color import Color
 from textual.containers import Horizontal
 from textual.events import Paste, Resize
 from textual.screen import Screen
@@ -31,6 +32,14 @@ from .settings import CookiesScreen, SettingsScreen
 
 URL_RE = re.compile(r"^\s*(https?://)?([\w-]+\.)+[a-z]{2,}(/\S*)?\s*$", re.I)
 PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
+
+
+def rich_color(value: str | None, fallback: str) -> str:
+    """A theme colour as a Rich colour name. ANSI themes use names like `ansi_blue` Rich can't read."""
+    try:
+        return Color.parse(value).rich_color.name
+    except Exception:
+        return fallback
 
 
 def looks_like_url(text: str) -> bool:
@@ -101,15 +110,19 @@ class MainScreen(Screen):
         self.query_one("#logo", Static).update(
             logo.render(
                 width - 4,
-                face=colors["primary"],
-                side=colors[f"primary-{shade}-3"],
-                shadow=colors["panel"],
+                face=rich_color(colors.get("primary"), "#ff8700"),
+                side=rich_color(colors.get(f"primary-{shade}-3"), "#af5f00"),
+                shadow=rich_color(colors.get("panel"), "#303030"),
             )
         )
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
         bits = []
+        if self.app.pending_app_update:
+            bits.append(
+                f"[b $primary]carrot-leaf {self.app.pending_app_update} installs when you quit[/]"
+            )
         if self.update_version:
             bits.append(f"[b $warning]yt-dlp {self.update_version} available · press u[/]")
         else:
@@ -262,9 +275,16 @@ class MainScreen(Screen):
         newer = update.update_available()
         if newer:
             self.app.call_from_thread(self._update_found, newer)
+        app_newer = update.app_update_available()
+        if app_newer:
+            self.app.call_from_thread(self._app_update_found, app_newer)
 
     def _update_found(self, version: str) -> None:
         self.update_version = version
+        self._render_status()
+
+    def _app_update_found(self, version: str) -> None:
+        self.app.pending_app_update = version
         self._render_status()
 
     def _remember(self, choice: Choice) -> None:
