@@ -54,6 +54,7 @@ Paste a link anywhere in the app. The video's details and thumbnail show up, the
 | `c`   | **Convert**: pick a video or audio format and a quality |
 | `l`   | Supported sites: search the list or paste a link to check |
 | `s`   | Settings: download folder, browser cookies              |
+| `t`   | Pick a theme                                            |
 | `o`   | Show the last downloaded file in Finder / Explorer      |
 | `u`   | Update yt-dlp                                           |
 | `esc` | Back to the URL bar                                     |

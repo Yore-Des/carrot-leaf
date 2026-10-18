@@ -47,7 +47,7 @@ KEYS = "   ".join(
         ("o", "open", "screen.reveal"),
         ("u", "update", "screen.update"),
         ("esc", "url bar", "screen.focus_url"),
-        ("^p", "themes", "app.command_palette"),
+        ("t", "themes", "app.change_theme"),
         ("q", "quit", "app.quit"),
     )
 )
@@ -73,6 +73,7 @@ class MainScreen(Screen):
         Binding("c", "convert", "Convert"),
         Binding("l", "sites", "Sites"),
         Binding("s", "settings", "Settings"),
+        Binding("t", "app.change_theme", "Themes"),
         Binding("o", "reveal", "Show file"),
         Binding("u", "update", "Update yt-dlp"),
         Binding("escape", "focus_url", "URL bar"),
