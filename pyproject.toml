@@ -1,6 +1,6 @@
 [project]
 name = "carrot-leaf"
-version = "0.2.0"
+version = "0.3.0"
 description = "A good-looking terminal app for downloading and converting YouTube (and 1000+ other sites) videos, powered by yt-dlp."
 readme = "README.md"
 license = "MIT"
