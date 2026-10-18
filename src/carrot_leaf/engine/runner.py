@@ -5,31 +5,37 @@ from __future__ import annotations
 import itertools
 import shutil
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadCancelled
 
 from . import deps
 from .options import Choice, build_options
 
 _ids = itertools.count(1)
 
-QUEUED, PREPARING, DOWNLOADING, CONVERTING, DONE, FAILED = (
+QUEUED, PREPARING, DOWNLOADING, CONVERTING, DONE, FAILED, CANCELLED = (
     "queued",
     "preparing",
     "downloading",
     "converting",
     "done",
     "failed",
+    "cancelled",
 )
+FINISHED = (DONE, FAILED, CANCELLED)
 
+# yt-dlp reports postprocessors by short name (the class name minus "FFmpeg" and "PP").
 _PP_LABELS = {
-    "FFmpegExtractAudio": "Converting audio",
-    "FFmpegVideoConvertor": "Converting video",
-    "FFmpegMerger": "Merging",
-    "FFmpegMetadata": "Adding details",
+    "ExtractAudio": "Converting audio",
+    "VideoConvertor": "Converting video",
+    "VideoRemuxer": "Packaging",
+    "Merger": "Merging video and audio",
+    "Metadata": "Adding details",
     "EmbedThumbnail": "Adding cover art",
 }
 
@@ -47,6 +53,15 @@ class Job:
     eta: float | None = None
     filepath: str | None = None
     error: Exception | None = None
+    # Set from the UI thread; the download thread checks it at every progress update.
+    cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+    @property
+    def cancelled(self) -> bool:
+        return self.cancel_event.is_set()
 
 
 @dataclass
@@ -64,7 +79,10 @@ def run_job(
     on_progress: Callable[[Progress], None],
     cookies_browser: str = "",
 ) -> str:
-    """Download and convert `job`. Blocks; returns the final file path."""
+    """Download and convert `job`. Blocks; returns the final file path.
+
+    Raises DownloadCancelled soon after `job.cancel()` is called.
+    """
     on_progress(Progress(PREPARING, "Getting ready"))
     ffmpeg = deps.find_ffmpeg(fetch=False)
     if ffmpeg is None:
@@ -94,6 +112,8 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
     streams = {"n": 0, "seen": set()}
 
     def progress_hook(d: dict) -> None:
+        if job.cancelled:
+            raise DownloadCancelled("Cancelled")
         fmt = (d.get("info_dict") or {}).get("format_id")
         if fmt not in streams["seen"]:
             streams["seen"].add(fmt)
@@ -113,6 +133,8 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
             )
 
     def pp_hook(d: dict) -> None:
+        if job.cancelled:
+            raise DownloadCancelled("Cancelled")
         if d["status"] == "started" and (label := _PP_LABELS.get(d.get("postprocessor"))):
             on_progress(Progress(CONVERTING, label, fraction=None))
 

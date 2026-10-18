@@ -14,14 +14,14 @@ def keys(opts):
 def test_download_is_best_mp4_with_metadata_and_cover():
     opts = build_options(DOWNLOAD, "/tmp/out")
     assert opts["format"] == "bv*+ba/b"
-    assert opts["format_sort"][0] == "res"
-    assert "vcodec:h264" in opts["format_sort"]
-    assert opts["merge_output_format"] == "mp4/mkv"
+    # H.264 first: merges into MP4 without re-encoding
+    assert opts["format_sort"][:2] == ["vcodec:h264", "acodec:aac"]
+    assert opts["merge_output_format"] == "mp4"
     assert opts["noplaylist"] is True
     assert opts["writethumbnail"] is True
     assert keys(opts) == [
         "FFmpegThumbnailsConvertor",
-        "FFmpegVideoConvertor",
+        "FFmpegVideoRemuxer",
         "FFmpegMetadata",
         "EmbedThumbnail",
     ]
@@ -32,6 +32,14 @@ def test_download_is_best_mp4_with_metadata_and_cover():
 def test_video_height_cap_uses_res_sort():
     opts = build_options(Choice("video", "mkv", "720"), "/x")
     assert opts["format_sort"][0] == "res:720"
+
+
+def test_mp4_at_a_set_height_copies_streams_instead_of_re_encoding():
+    opts = build_options(Choice("video", "mp4", "2160"), "/x")
+    assert opts["format_sort"][0] == "res:2160"
+    assert opts["merge_output_format"] == "mp4"
+    assert "FFmpegVideoRemuxer" in keys(opts)
+    assert "FFmpegVideoConvertor" not in keys(opts)
 
 
 def test_webm_has_no_cover_art():

@@ -53,6 +53,7 @@ lists every key:
 | ----- | ---------------------------------------------------------- |
 | `d`   | Download at the best quality, as MP4                       |
 | `c`   | Convert: pick a video or audio format and a quality        |
+| `x`   | Cancel the current download (or use a row's cancel button)   |
 | `l`   | List supported sites. Search by name, or paste a link to check it |
 | `s`   | Settings: download folder and browser cookies              |
 | `t`   | Pick a theme                                               |
@@ -77,6 +78,12 @@ time.
 
 The quality list only shows resolutions the video has. Where the format allows it, the
 file gets the title, artist and cover art.
+
+"Best" MP4 (what `d` downloads) is the best H.264 copy, which plays in QuickTime, phones
+and TVs. On YouTube that tops out at 1080p. Above that YouTube only has VP9 or AV1, so
+picking 1440p or 2160p MP4 in Convert copies that video into the MP4 as-is. It's fast and
+full quality, but some older players won't open it. Carrot Leaf never re-encodes a
+download unless you pick MOV at a set height or a GIF.
 
 ### Where files go
 

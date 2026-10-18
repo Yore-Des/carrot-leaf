@@ -14,6 +14,7 @@ from textual.widgets.option_list import Option
 from ..config import Settings
 from ..engine.options import (
     AUDIO_FORMATS,
+    H264_FIRST,
     VIDEO_FORMATS,
     Choice,
     audio_qualities,
@@ -36,10 +37,14 @@ FORMAT_NOTES = {
 }
 
 
-def quality_label(kind: str, q: str) -> str:
+def quality_label(kind: str, q: str, fmt: str = "") -> str:
     if q == "best":
-        return "Best available"
-    return f"{q}p" if kind == "video" else f"{q} kbps"
+        # See options.H264_FIRST: "best" MP4/MOV is the best H.264, so nothing is re-encoded.
+        return "Best that plays everywhere" if fmt in H264_FIRST else "Best available"
+    label = f"{q}p" if kind == "video" else f"{q} kbps"
+    if fmt == "mp4" and kind == "video" and int(q) > 1080:
+        label += "  [dim]VP9/AV1, newer players[/dim]"
+    return label
 
 
 class ConvertScreen(ModalScreen[Choice | None]):
@@ -111,7 +116,7 @@ class ConvertScreen(ModalScreen[Choice | None]):
             self.settings, f"last_{kind}_quality"
         )
         ql.clear_options()
-        ql.add_options([Option(quality_label(kind, q), id=q) for q in qualities])
+        ql.add_options([Option(quality_label(kind, q, fmt), id=q) for q in qualities])
         ql.highlighted = qualities.index(previous) if previous in qualities else 0
 
     def choice(self) -> Choice | None:

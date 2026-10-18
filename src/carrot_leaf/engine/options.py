@@ -27,6 +27,9 @@ VIDEO_SORT = {
     "mkv": [],
 }
 
+# Containers whose "best" prefers H.264 so nothing has to be re-encoded to play everywhere.
+H264_FIRST = ("mp4", "mov")
+
 OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
 
 
@@ -117,11 +120,27 @@ def build_options(
 def _video(choice: Choice, opts: dict, pps: list) -> None:
     res = "res" if choice.quality == "best" else f"res:{choice.quality}"
     opts["format"] = "bv*+ba/b"
-    opts["format_sort"] = [res, *VIDEO_SORT[choice.fmt]]
-    # Fall back to mkv if the picked streams can't be merged into the target container,
-    # then convert; FFmpegVideoConvertor skips when the file already has the right ext.
-    opts["merge_output_format"] = f"{choice.fmt}/mkv"
-    pps.append({"key": "FFmpegVideoConvertor", "preferedformat": choice.fmt})
+    if choice.fmt in H264_FIRST and choice.quality == "best":
+        # "Best" MP4/MOV means the best copy that plays everywhere: H.264 + AAC merge straight
+        # in, no re-encode. YouTube only has H.264 up to 1080p; above that it's VP9/AV1, and
+        # turning those into H.264 re-encodes the whole video (minutes for 4K).
+        opts["format_sort"] = ["vcodec:h264", "acodec:aac", res]
+    else:
+        opts["format_sort"] = [res, *VIDEO_SORT[choice.fmt]]
+    if choice.fmt == "mp4":
+        # MP4 can hold VP9/AV1/Opus too, so merge and remux by copying streams, never
+        # re-encoding. A 1440p/2160p pick may then not open in older players.
+        opts["merge_output_format"] = "mp4"
+        pps.append({"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"})
+    elif choice.fmt == "mov" and choice.quality == "best":
+        # H.264 + AAC copy into MOV as-is.
+        opts["merge_output_format"] = "mov/mkv"
+        pps.append({"key": "FFmpegVideoRemuxer", "preferedformat": "mov"})
+    else:
+        # Fall back to mkv if the streams can't go into the target container, then convert;
+        # FFmpegVideoConvertor skips when the file already has the right ext.
+        opts["merge_output_format"] = f"{choice.fmt}/mkv"
+        pps.append({"key": "FFmpegVideoConvertor", "preferedformat": choice.fmt})
 
 
 def _gif(choice: Choice, opts: dict, pps: list) -> None:

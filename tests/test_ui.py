@@ -222,3 +222,33 @@ async def test_sites_list_searches_and_checks_links(fakes):
         assert "No dedicated support" in str(app.screen.query_one("#site-result").render())
         await pilot.press("escape")
         assert await settle(pilot, lambda: not isinstance(app.screen, SitesScreen))
+
+
+async def test_cancel_running_and_waiting(fakes, monkeypatch):
+    from yt_dlp.utils import DownloadCancelled
+
+    def slow_run_job(job, download_dir, on_progress, cookies_browser=""):
+        on_progress(runner.Progress(runner.DOWNLOADING, "Downloading", 0.1))
+        if not job.cancel_event.wait(5):
+            raise AssertionError("never cancelled")
+        raise DownloadCancelled("Cancelled")
+
+    monkeypatch.setattr(main_screen.runner, "run_job", slow_run_job)
+    app = CarrotLeafApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        screen = app.screen
+        screen.load(URL)
+        assert await settle(pilot, lambda: screen.info is not None)
+        await pilot.press("d", "d")
+        assert await settle(pilot, lambda: screen.jobs[0].state == runner.DOWNLOADING)
+        first, second = screen.jobs
+        assert second.state == runner.QUEUED
+
+        await pilot.click(f"#job-{second.id} .job-cancel")  # waiting job leaves the line
+        assert await settle(pilot, lambda: second.state == runner.CANCELLED)
+        assert first.state == runner.DOWNLOADING
+
+        await pilot.press("x")  # cancels the running one
+        assert await settle(pilot, lambda: first.state == runner.CANCELLED)
+        assert screen.running is None
+        assert not screen.query_one(f"#job-{first.id} .job-cancel").visible

@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from rich.markup import escape
+from rich.style import Style
+from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import ProgressBar, Static
+from textual.message import Message
+from textual.reactive import reactive
+from textual.widget import Widget
+from textual.widgets import Button, Static
 
 from ..engine import errors, runner
 from ..engine.runner import Job
@@ -39,8 +45,59 @@ def short_path(path: str) -> str:
         return str(p)
 
 
+class BlockBar(Widget):
+    """A progress bar drawn with full-height blocks. `fraction` None means "busy", and animates."""
+
+    DEFAULT_CSS = """
+    BlockBar {
+        width: 30;
+        height: 1;
+        color: $primary;
+    }
+    """
+    COMPONENT_CLASSES = {"block-bar--track"}
+
+    fraction: reactive[float | None] = reactive(0.0)
+    _tick = reactive(0)
+
+    def on_mount(self) -> None:
+        self._timer = self.set_interval(0.08, self._advance, pause=True)
+        self.watch_fraction(self.fraction)
+
+    def watch_fraction(self, fraction: float | None) -> None:
+        timer = getattr(self, "_timer", None)
+        if timer is not None:
+            timer.pause() if fraction is not None else timer.resume()
+
+    def _advance(self) -> None:
+        self._tick += 1
+
+    def render(self) -> Text:
+        width = self.size.width
+        fill = Style(color=self.rich_style.color)
+        track = Style(color=self.get_component_rich_style("block-bar--track").color)
+        cells = [False] * width
+        if self.fraction is None:
+            span = max(4, width // 5)
+            start = self._tick % (width + span) - span
+            for i in range(max(0, start), min(width, start + span)):
+                cells[i] = True
+        else:
+            for i in range(round(width * min(max(self.fraction, 0.0), 1.0))):
+                cells[i] = True
+        out = Text(no_wrap=True)
+        for filled in cells:
+            out.append("█", fill if filled else track)
+        return out
+
+
 class JobRow(Vertical):
     DEFAULT_CSS = "JobRow { height: auto; }"
+
+    class CancelRequested(Message):
+        def __init__(self, job: Job) -> None:
+            super().__init__()
+            self.job = job
 
     def __init__(self, job: Job) -> None:
         super().__init__(id=f"job-{job.id}")
@@ -51,8 +108,9 @@ class JobRow(Vertical):
             yield Static(classes="job-mark")
             yield Static(classes="job-title")
             yield Static(classes="job-kind")
+            yield Button("cancel", classes="job-cancel")
         with Horizontal(classes="job-body"):
-            yield ProgressBar(total=100, show_eta=False, show_percentage=False)
+            yield BlockBar()
             yield Static(classes="job-status")
 
     def on_mount(self) -> None:
@@ -62,38 +120,53 @@ class JobRow(Vertical):
         job = self.job
         self.query_one(".job-title", Static).update(escape(job.title))
         self.query_one(".job-kind", Static).update(escape(job.choice.label))
-        bar = self.query_one(ProgressBar)
+        bar = self.query_one(BlockBar)
         status = self.query_one(".job-status", Static)
         self.set_class(job.state == runner.DONE, "-done")
         self.set_class(job.state == runner.FAILED, "-failed")
-        self.set_class(job.state not in (runner.DONE, runner.FAILED, runner.QUEUED), "-running")
-        mark = {runner.DONE: "✓", runner.FAILED: "✗", runner.QUEUED: "·"}.get(job.state, "↓")
-        self.query_one(".job-mark", Static).update(mark)
+        self.set_class(job.state == runner.CANCELLED, "-cancelled")
+        self.set_class(job.state not in (*runner.FINISHED, runner.QUEUED), "-running")
+        mark = {runner.DONE: "✓", runner.FAILED: "✗", runner.CANCELLED: "–", runner.QUEUED: "·"}
+        self.query_one(".job-mark", Static).update(mark.get(job.state, "↓"))
+        cancel = self.query_one(".job-cancel", Button)
+        cancel.visible = job.state not in runner.FINISHED  # keeps its space so columns line up
+        cancel.disabled = job.cancelled
 
         if job.state == runner.DONE:
-            bar.update(total=100, progress=100)
+            bar.fraction = 1.0
             status.update(f"[b $success]✓ Saved[/] → {escape(short_path(job.filepath or ''))}")
+        elif job.state == runner.CANCELLED:
+            bar.fraction = 0.0
+            status.update("[dim]Cancelled[/dim]")
+        elif job.cancelled:
+            bar.fraction = None
+            status.update("[dim]Cancelling…[/dim]")
         elif job.state == runner.FAILED:
-            bar.update(total=100, progress=0)
+            bar.fraction = 0.0
             friendly = errors.explain(job.error or "")
             hint = f" [dim]{escape(friendly.hint)}[/dim]" if friendly.hint else ""
             if friendly.kind == errors.LOGIN:
                 hint = " [dim]Press s to choose a browser for cookies, then try again.[/dim]"
             status.update(f"[b $error]✗ {escape(friendly.message)}[/]{hint}")
         elif job.state == runner.QUEUED:
-            bar.update(total=100, progress=0)
+            bar.fraction = 0.0
             status.update("[dim]Waiting in line[/dim]")
         elif job.fraction is None:
-            bar.update(total=None)
+            bar.fraction = None
             status.update(escape(job.status) + "…")
         else:
-            bar.update(total=100, progress=job.fraction * 100)
+            bar.fraction = job.fraction
             bits = [job.status, f"{job.fraction * 100:.0f}%"]
             if job.speed:
                 bits.append(f"{human_size(job.speed)}/s")
             if job.eta is not None:
                 bits.append(f"{human_eta(job.eta)} left")
             status.update(escape(" · ".join(bits)))
+
+    @on(Button.Pressed, ".job-cancel")
+    def _cancel_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.post_message(self.CancelRequested(self.job))
 
 
 class DownloadQueue(VerticalScroll):

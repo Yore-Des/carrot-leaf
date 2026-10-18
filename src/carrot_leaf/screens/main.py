@@ -25,7 +25,7 @@ from ..engine import errors, runner, update
 from ..engine.options import DOWNLOAD, Choice
 from ..engine.probe import VideoInfo, fetch_thumbnail, probe
 from ..engine.runner import Job, Progress
-from ..widgets.queue import DownloadQueue, short_path
+from ..widgets.queue import DownloadQueue, JobRow, short_path
 from ..widgets.video_card import VideoCard
 from .convert import ConvertScreen
 from .settings import CookiesScreen, SettingsScreen
@@ -36,23 +36,29 @@ PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
 
 
 # Always shown, unlike Textual's Footer, which hides letter keys while the URL bar has focus.
-# Each label is clickable.
-KEYS = "   ".join(
-    f"[b $primary]{key}[/] [@click={action}]{label}[/]"
-    for key, label, action in (
-        ("d", "download", "screen.download"),
-        ("c", "convert", "screen.convert"),
-        ("l", "sites", "screen.sites"),
-        ("s", "settings", "screen.settings"),
-        ("o", "open", "screen.reveal"),
-        ("u", "update", "screen.update"),
-        ("esc", "url bar", "screen.focus_url"),
-        ("t", "themes", "app.change_theme"),
-        ("q", "quit", "app.quit"),
-    )
+# Each label is clickable. "{url}" is esc (back to the URL bar) or, while typing in it, tab.
+KEY_LIST = (
+    ("d", "download", "screen.download"),
+    ("c", "convert", "screen.convert"),
+    ("x", "cancel", "screen.cancel_download"),
+    ("l", "sites", "screen.sites"),
+    ("s", "settings", "screen.settings"),
+    ("o", "open", "screen.reveal"),
+    ("u", "update", "screen.update"),
+    ("{url}", "", ""),
+    ("t", "themes", "app.change_theme"),
+    ("q", "quit", "app.quit"),
 )
+URL_KEY = ("esc", "url bar", "screen.focus_url")
+TAB_KEY = ("tab", "use keys", "screen.leave_url")
 
-TAB_HINT = "[b $primary]tab[/] [@click=screen.leave_url]use keys[/]"
+
+def key_bar(typing: bool) -> str:
+    keys = [
+        (TAB_KEY if typing else URL_KEY) if k == "{url}" else (k, label, action)
+        for k, label, action in KEY_LIST
+    ]
+    return "  ".join(f"[b $primary]{k}[/] [@click={action}]{label}[/]" for k, label, action in keys)
 
 
 def rich_color(value: str | None, fallback: str) -> str:
@@ -74,6 +80,7 @@ class MainScreen(Screen):
         Binding("l", "sites", "Sites"),
         Binding("s", "settings", "Settings"),
         Binding("t", "app.change_theme", "Themes"),
+        Binding("x", "cancel_download", "Cancel download"),
         Binding("o", "reveal", "Show file"),
         Binding("u", "update", "Update yt-dlp"),
         Binding("escape", "focus_url", "URL bar"),
@@ -148,9 +155,7 @@ class MainScreen(Screen):
 
     def _render_keys(self) -> None:
         # Letters type into the URL bar while it has focus, so say how to reach the shortcuts.
-        typing = isinstance(self.focused, Input)
-        prefix = f"{TAB_HINT}   " if typing else ""
-        self.query_one("#keys", Static).update(prefix + KEYS)
+        self.query_one("#keys", Static).update(key_bar(isinstance(self.focused, Input)))
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
@@ -376,6 +381,29 @@ class MainScreen(Screen):
         self.query_one(DownloadQueue).add(job)
         self._pump()
 
+    def action_cancel_download(self) -> None:
+        """Cancel the running download, or the next waiting one if nothing is running."""
+        waiting = [j for j in self.jobs if j.state == runner.QUEUED]
+        target = self.running or (waiting[0] if waiting else None)
+        if target is None:
+            self.app.bell()
+            return
+        self.cancel(target)
+
+    @on(JobRow.CancelRequested)
+    def _cancel_requested(self, event: JobRow.CancelRequested) -> None:
+        self.cancel(event.job)
+
+    def cancel(self, job: Job) -> None:
+        if job.state in runner.FINISHED or job.cancelled:
+            return
+        job.cancel()
+        if job.state == runner.QUEUED:
+            # Never started: drop it now. A running job stops at its next progress update.
+            job.state = runner.CANCELLED
+        self.query_one(DownloadQueue).refresh_job(job)
+        self._pump()
+
     def _pump(self) -> None:
         queue = self.query_one(DownloadQueue)
         waiting = [j for j in self.jobs if j.state == runner.QUEUED]
@@ -390,10 +418,14 @@ class MainScreen(Screen):
         last = {"t": 0.0, "state": None}
 
         def on_progress(p: Progress) -> None:
+            # Throttle repaints, but never drop a new step or a finished one: a part that
+            # downloads in under PROGRESS_INTERVAL would otherwise sit at 0% on screen.
             now = time.monotonic()
-            if p.state == last["state"] and now - last["t"] < PROGRESS_INTERVAL:
+            step = (p.state, p.status)
+            finished = p.fraction is not None and p.fraction >= 1
+            if step == last["state"] and not finished and now - last["t"] < PROGRESS_INTERVAL:
                 return
-            last.update(t=now, state=p.state)
+            last.update(t=now, state=step)
             self.app.call_from_thread(self._job_progress, job, p)
 
         try:
@@ -417,6 +449,8 @@ class MainScreen(Screen):
         if exc is None:
             job.state, job.filepath = runner.DONE, path
             self.last_file = path
+        elif job.cancelled:
+            job.state = runner.CANCELLED
         else:
             job.state, job.error = runner.FAILED, exc
         self.query_one(DownloadQueue).refresh_job(job)

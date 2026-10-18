@@ -244,39 +244,40 @@ JobRow.-failed .job-mark {
     margin-left: 2;
 }
 
+.job-cancel {
+    margin-left: 2;
+    color: $text-muted;
+}
+
+JobRow .job-cancel:focus {
+    background: $error;
+    color: $background;
+}
+
 .job-body {
     height: 1;
     padding-left: 2;
 }
 
-JobRow ProgressBar {
-    width: 32;
-}
-
-JobRow Bar {
+JobRow BlockBar {
     width: 30;
-}
-
-JobRow Bar > .bar--bar {
     color: $primary;
-    background: $panel;
 }
 
-JobRow Bar > .bar--indeterminate {
-    color: $accent;
-    background: $panel;
+JobRow BlockBar > .block-bar--track {
+    color: $panel;
 }
 
-JobRow.-done Bar > .bar--complete,
-JobRow.-done Bar > .bar--bar {
+JobRow.-done BlockBar {
     color: $success;
 }
 
-JobRow.-failed Bar > .bar--bar {
-    color: $error;
+JobRow.-failed BlockBar, JobRow.-cancelled BlockBar {
+    color: $panel;
 }
 
 .job-status {
+    margin-left: 2;
     width: 1fr;
     color: $text-muted;
     text-wrap: nowrap;
