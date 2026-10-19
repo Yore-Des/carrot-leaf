@@ -8,6 +8,7 @@
 # Set CARROT_LEAF_SOURCE to install from somewhere else, e.g.
 #   CARROT_LEAF_SOURCE=git+https://github.com/Yore-Des/carrot-leaf sh install.sh
 # Set CARROT_LEAF_NO_MODIFY_PATH=1 to leave your shell profile alone.
+# Set CARROT_LEAF_NO_FFMPEG=1 to skip downloading ffmpeg now (Carrot Leaf gets it on first use).
 set -eu
 
 SOURCE="${CARROT_LEAF_SOURCE:-carrot-leaf}"
@@ -35,6 +36,12 @@ echo "→ Installing Carrot Leaf…"
 uv tool install --python 3.12 --upgrade "$SOURCE"
 if [ -z "${CARROT_LEAF_NO_MODIFY_PATH:-}" ]; then
     uv tool update-shell >/dev/null 2>&1 || true
+fi
+
+if [ -z "${CARROT_LEAF_NO_FFMPEG:-}" ]; then
+    echo "→ Getting ffmpeg…"
+    BIN_DIR="$(uv tool dir --bin 2>/dev/null || echo "${XDG_BIN_HOME:-$HOME/.local/bin}")"
+    "$BIN_DIR/carrot" setup || echo "  (Carrot Leaf will fetch ffmpeg the first time it needs it.)"
 fi
 
 green "✓ Done. Run:  carrot"

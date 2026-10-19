@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
 from rich.markup import escape
 from rich.style import Style
 from rich.text import Text
@@ -14,7 +17,9 @@ from textual.widget import Widget
 from textual.widgets import Button, Static
 
 from ..engine import errors, runner
-from ..engine.runner import Job
+from ..engine.runner import Job, Progress
+
+PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
 
 
 def human_size(n: float | None) -> str:
@@ -33,6 +38,26 @@ def human_eta(seconds: float | None) -> str:
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     return f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
+
+
+def throttled(deliver: Callable[[Progress], None]) -> Callable[[Progress], None]:
+    """Wrap a progress callback so repaints come at most every PROGRESS_INTERVAL.
+
+    A new step or a finished one always gets through: a part that completes in under
+    PROGRESS_INTERVAL would otherwise sit at 0% on screen.
+    """
+    last: dict = {"t": 0.0, "step": None}
+
+    def on_progress(p: Progress) -> None:
+        now = time.monotonic()
+        step = (p.state, p.status)
+        finished = p.fraction is not None and p.fraction >= 1
+        if step == last["step"] and not finished and now - last["t"] < PROGRESS_INTERVAL:
+            return
+        last.update(t=now, step=step)
+        deliver(p)
+
+    return on_progress
 
 
 def short_path(path: str) -> str:
@@ -119,7 +144,10 @@ class JobRow(Vertical):
     def refresh_job(self) -> None:
         job = self.job
         self.query_one(".job-title", Static).update(escape(job.title))
-        self.query_one(".job-kind", Static).update(escape(job.choice.label))
+        kind = job.choice.label
+        if job.file is not None:
+            kind = f"{job.file.path.suffix.lstrip('.').upper() or 'FILE'} → {kind}"
+        self.query_one(".job-kind", Static).update(escape(kind))
         bar = self.query_one(BlockBar)
         status = self.query_one(".job-status", Static)
         self.set_class(job.state == runner.DONE, "-done")
@@ -127,7 +155,8 @@ class JobRow(Vertical):
         self.set_class(job.state == runner.CANCELLED, "-cancelled")
         self.set_class(job.state not in (*runner.FINISHED, runner.QUEUED), "-running")
         mark = {runner.DONE: "✓", runner.FAILED: "✗", runner.CANCELLED: "–", runner.QUEUED: "·"}
-        self.query_one(".job-mark", Static).update(mark.get(job.state, "↓"))
+        busy = "⟳" if job.file is not None else "↓"
+        self.query_one(".job-mark", Static).update(mark.get(job.state, busy))
         cancel = self.query_one(".job-cancel", Button)
         cancel.visible = job.state not in runner.FINISHED  # keeps its space so columns line up
         cancel.disabled = job.cancelled
@@ -170,14 +199,26 @@ class JobRow(Vertical):
 
 
 class DownloadQueue(VerticalScroll):
+    """The job list. Also used for conversions, with its own words."""
+
+    def __init__(
+        self,
+        title: str = "downloads",
+        busy: str = "downloading",
+        empty: str = "Nothing yet. Downloads show up here.",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.queue_title, self.busy, self.empty = title, busy, empty
+
     def compose(self) -> ComposeResult:
-        yield Static("Nothing yet. Downloads show up here.", id="queue-empty")
+        yield Static(self.empty, classes="queue-empty")
 
     def on_mount(self) -> None:
-        self.border_title = "downloads"
+        self.border_title = self.queue_title
 
     def add(self, job: Job) -> None:
-        self.query_one("#queue-empty").display = False
+        self.query_one(".queue-empty").display = False
         row = JobRow(job)
         self.mount(row, before=0)
         self.scroll_home(animate=False)
@@ -191,7 +232,7 @@ class DownloadQueue(VerticalScroll):
     def update_title(self, running: int, queued: int) -> None:
         bits = []
         if running:
-            bits.append("1 downloading")
+            bits.append(f"1 {self.busy}")
         if queued:
             bits.append(f"{queued} waiting")
-        self.border_title = "downloads" + (f" · {', '.join(bits)}" if bits else "")
+        self.border_title = self.queue_title + (f" · {', '.join(bits)}" if bits else "")

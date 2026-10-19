@@ -26,7 +26,24 @@ MainScreen.-short #logo {
     text-overflow: ellipsis;
 }
 
-#url-row {
+/* ---------- tabs ---------- */
+
+#tabs {
+    height: 1;
+    margin: 1 2 0 2;
+    link-style: none;
+    link-color: $text-muted;
+    link-background: $background;
+    link-style-hover: bold;
+    link-color-hover: $primary;
+    link-background-hover: $panel;
+}
+
+#panes, #pane-download, FilesPane {
+    height: 1fr;
+}
+
+.source-row {
     height: auto;
     margin: 1 2 0 2;
     border: solid $primary 50%;
@@ -34,18 +51,18 @@ MainScreen.-short #logo {
     border-title-style: bold;
 }
 
-#url-row:focus-within {
+.source-row:focus-within {
     border: solid $primary;
 }
 
-#prompt {
+.prompt {
     width: 2;
     padding-left: 1;
     color: $primary;
     text-style: bold;
 }
 
-#url {
+#url, #file-input {
     width: 1fr;
     height: 1;
     border: none;
@@ -53,7 +70,7 @@ MainScreen.-short #logo {
     background: $background;
 }
 
-#url:focus {
+#url:focus, #file-input:focus {
     border: none;
 }
 
@@ -63,7 +80,7 @@ Input:focus {
 
 /* ---------- section rules ---------- */
 
-VideoCard, DownloadQueue {
+VideoCard, DownloadQueue, #files-card {
     margin: 1 2 0 2;
     padding: 1 0 0 0;
     border: none;
@@ -78,6 +95,36 @@ VideoCard, DownloadQueue {
 VideoCard {
     height: auto;
     border-title-color: $primary;
+}
+
+#files-card {
+    height: auto;
+    max-height: 50%;
+    border-title-color: $primary;
+}
+
+#files-empty, #files-status {
+    height: auto;
+    color: $text-muted;
+}
+
+#files {
+    height: auto;
+    max-height: 12;
+    border: none;
+    padding: 0;
+    background: $background;
+    margin-bottom: 1;
+}
+
+#files:focus {
+    border: none;
+    background-tint: $foreground 0%;
+}
+
+#files-hint {
+    width: auto;
+    color: $text-muted;
 }
 
 #card-switcher {
@@ -179,11 +226,11 @@ Button.-active {
     color: $background;
 }
 
-#error-actions, #actions, #dialog-actions {
+#error-actions, #actions, #dialog-actions, #files-actions {
     height: auto;
 }
 
-#error-actions Button, #actions Button, #dialog-actions Button {
+#error-actions Button, #actions Button, #dialog-actions Button, #files-actions Button {
     margin-right: 2;
 }
 
@@ -201,7 +248,7 @@ DownloadQueue {
     scrollbar-size-vertical: 1;
 }
 
-#queue-empty {
+.queue-empty {
     color: $text-muted;
 }
 
@@ -321,6 +368,16 @@ ModalScreen {
 
 #dialog.cookies {
     width: 60;
+}
+
+#dialog.picker-dialog {
+    width: 80;
+    height: 32;
+}
+
+#tree {
+    height: 1fr;
+    background: $background;
 }
 
 #dialog.sites {

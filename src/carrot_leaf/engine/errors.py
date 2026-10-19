@@ -24,6 +24,12 @@ class FriendlyError:
 
 _RULES: list[tuple[str, tuple[str, ...], str, str]] = [
     (
+        UNSUPPORTED,
+        ("invalid data found when processing input", "isn't audio, video or an image"),
+        "Carrot Leaf can't read this file.",
+        "It may be damaged, or it isn't audio, video or an image.",
+    ),
+    (
         PLAYLIST,
         ("playlist or channel",),
         "That's a playlist or channel.",

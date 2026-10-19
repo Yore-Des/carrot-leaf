@@ -1,4 +1,5 @@
-"""Command-line entry point: `carrot [URL]`, `carrot update`, `carrot --version`."""
+"""Command-line entry point: `carrot [URL or FILE]`, `carrot setup`, `carrot update`,
+`carrot --version`."""
 
 from __future__ import annotations
 
@@ -12,13 +13,17 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["update"]:
         return _update()
+    if argv[:1] == ["setup"]:
+        return _setup()
 
     parser = argparse.ArgumentParser(
         prog="carrot",
         description="Download or convert videos from YouTube and 1,300+ other sites.",
-        epilog="Run `carrot update` to update yt-dlp.",
+        epilog="Run `carrot setup` to download ffmpeg now, `carrot update` to update yt-dlp.",
     )
-    parser.add_argument("url", nargs="?", default="", help="video link to open straight away")
+    parser.add_argument(
+        "url", nargs="?", default="", help="video link (or file to convert) to open straight away"
+    )
     parser.add_argument("--version", action="version", version=_version_text())
     args = parser.parse_args(argv)
 
@@ -41,6 +46,37 @@ def _version_text() -> str:
     from .engine.update import installed_version
 
     return f"carrot-leaf {__version__} (yt-dlp {installed_version()})"
+
+
+def _setup() -> int:
+    """Download Carrot Leaf's own ffmpeg now rather than on first use. The installers run this."""
+    from .engine import deps, local
+
+    if deps.bundled_ffmpeg_ready():
+        print("ffmpeg is already set up.")
+    else:
+        print("Getting ffmpeg for Carrot Leaf (one time, about 50 MB)…")
+    try:
+        tool = deps.fetch_bundled_ffmpeg(show_progress=True)
+    except Exception as exc:
+        print(f"Couldn't download ffmpeg: {exc}")
+        print("Carrot Leaf will try again the first time it needs ffmpeg.")
+        return 1
+    print(f"✓ ffmpeg is in {tool.path}")
+    if system := deps.system_ffmpeg():
+        print(f"  Your own ffmpeg in {system.path} is used too, for anything it can do.")
+
+    dirs = [t.path for t in deps.ffmpeg_candidates()]
+
+    def has(encoder: str) -> bool:
+        return any(deps.ffmpeg_has_encoder(d, encoder) for d in dirs)
+
+    for kind in ("video", "audio", "image"):
+        formats = local.formats_for(kind)
+        missing = [f.upper() for f in formats if local.missing_encoder(kind, f, has)]
+        line = f"  {len(formats) - len(missing)} {kind} formats ready"
+        print(line + (f" (not available: {', '.join(missing)})" if missing else ""))
+    return 0
 
 
 def _update() -> int:

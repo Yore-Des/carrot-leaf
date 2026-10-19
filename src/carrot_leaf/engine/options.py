@@ -11,6 +11,11 @@ AUDIO_FORMATS = ("mp3", "m4a", "opus", "flac", "wav", "ogg")
 VIDEO_HEIGHTS = (2160, 1440, 1080, 720, 480, 360)
 GIF_HEIGHTS = (480, 360, 240)
 AUDIO_BITRATES = ("320", "192", "128")
+# Image sizes: "best" keeps the original, "50" halves it, others cap the long side in pixels.
+IMAGE_SIZES = ("3840", "1920", "1280")
+# Frames per second to pull out of a video; "best" keeps every frame.
+FRAME_RATES = ("best", "10", "1", "0.1")
+FRAME_RATE_LABELS = {"best": "every frame", "10": "10/s", "1": "1/s", "0.1": "1 every 10s"}
 LOSSLESS_AUDIO = ("flac", "wav")
 
 # Containers that can carry embedded cover art.
@@ -35,13 +40,26 @@ OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
 
 @dataclass(frozen=True)
 class Choice:
-    kind: str  # "video" or "audio"
+    kind: str  # "video", "audio", or for local files also "image" and "frames"
     fmt: str
-    quality: str = "best"  # "best", a height like "1080", or a bitrate like "320"
+    # "best", a height like "1080", a bitrate like "320", an image size like "1920" or "50"
+    # (percent), or a frame rate like "1".
+    quality: str = "best"
 
     @property
     def label(self) -> str:
-        if self.quality == "best":
+        if self.kind == "frames":
+            return (
+                f"{self.fmt.upper()} frames · {FRAME_RATE_LABELS.get(self.quality, self.quality)}"
+            )
+        if self.kind == "image":
+            if self.quality == "best":
+                q = "original"
+            elif self.quality == "50":
+                q = "50%"
+            else:
+                q = f"{self.quality}px"
+        elif self.quality == "best":
             q = "best"
         elif self.kind == "video":
             q = f"{self.quality}p"
@@ -65,6 +83,21 @@ def video_qualities(fmt: str, max_height: int | None) -> list[str]:
 
 def audio_qualities(fmt: str) -> list[str]:
     return ["best"] if fmt in LOSSLESS_AUDIO else ["best", *AUDIO_BITRATES]
+
+
+def image_sizes(long_side: int | None) -> list[str]:
+    """Size options for an image: original, half, and caps smaller than the image."""
+    caps = [s for s in IMAGE_SIZES if not long_side or int(s) < long_side]
+    return ["best", "50", *caps]
+
+
+def gif_filter(height: str) -> str:
+    """A palette pass makes GIFs look far better than ffmpeg's default dithering."""
+    return (
+        f"fps=10,scale=-2:{height}:flags=lanczos,split[a][b];"
+        "[a]palettegen=stats_mode=diff[p];"
+        "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
+    )
 
 
 def build_options(
@@ -148,15 +181,10 @@ def _gif(choice: Choice, opts: dict, pps: list) -> None:
     opts["format"] = "bv*/b"
     opts["format_sort"] = [f"res:{height}"]
     pps.append({"key": "FFmpegVideoConvertor", "preferedformat": "gif"})
-    # A palette pass makes GIFs look far better than ffmpeg's default dithering.
     opts["postprocessor_args"] = {
         "videoconvertor": [
             "-vf",
-            (
-                f"fps=10,scale=-2:{height}:flags=lanczos,split[a][b];"
-                "[a]palettegen=stats_mode=diff[p];"
-                "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"
-            ),
+            gif_filter(height),
             "-loop",
             "0",
             "-an",

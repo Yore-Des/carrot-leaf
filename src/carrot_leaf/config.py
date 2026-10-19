@@ -34,6 +34,10 @@ class Settings:
     last_video_quality: str = "best"
     last_audio_format: str = "mp3"
     last_audio_quality: str = "best"
+    last_image_format: str = "jpg"
+    last_image_quality: str = "best"
+    last_frames_format: str = "png"
+    last_frames_quality: str = "1"
     # Browser cookies stay off until the user opts in for a login-only video.
     cookies_browser: str = ""
     theme: str = "carrot"

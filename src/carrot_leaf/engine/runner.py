@@ -9,6 +9,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadCancelled
@@ -53,6 +54,8 @@ class Job:
     eta: float | None = None
     filepath: str | None = None
     error: Exception | None = None
+    # A local.FileInfo when this job converts a file on disk rather than downloading `url`.
+    file: Any = field(default=None, repr=False)
     # Set from the UI thread; the download thread checks it at every progress update.
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 

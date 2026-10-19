@@ -198,6 +198,31 @@ async def test_every_theme_renders(fakes, theme, tmp_path):
         await pilot.pause()
         app.save_screenshot(path=str(tmp_path))
 
+        # The Convert files tab, with a file listed and a conversion in each state.
+        from carrot_leaf.engine.local import VIDEO, FileInfo, Stream
+        from carrot_leaf.screens.files import FilePickerScreen, FilesPane
+
+        await pilot.resize_terminal(120, 50)
+        screen.action_show_tab("files")
+        pane = screen.query_one(FilesPane)
+        clip = FileInfo(tmp_path / "a.mov", VIDEO, "mov", 1, 2.0, Stream("h264", 64, 36), None)
+        pane.files.append(clip)
+        pane._render_files()
+        for state in (runner.QUEUED, runner.CONVERTING, runner.DONE, runner.FAILED):
+            job = Job(url=str(clip.path), title=state, choice=DOWNLOAD, file=clip)
+            job.state, job.fraction, job.status = state, 0.5, "Converting"
+            job.error = Exception("boom")
+            pane.query_one("#conversions").add(job)
+        await pilot.pause()
+        app.save_screenshot(path=str(tmp_path))
+        app.push_screen(ConvertScreen(pane.convert_options(), app.settings))
+        await pilot.pause()
+        app.save_screenshot(path=str(tmp_path))
+        app.pop_screen()
+        app.push_screen(FilePickerScreen(tmp_path))
+        await pilot.pause()
+        app.save_screenshot(path=str(tmp_path))
+
 
 async def test_sites_list_searches_and_checks_links(fakes):
     from carrot_leaf.screens.sites import SitesScreen

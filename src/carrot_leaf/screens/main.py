@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,24 +14,26 @@ from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.color import Color
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.events import Paste, Resize
 from textual.screen import Screen
-from textual.widgets import Button, Input, Static
+from textual.widgets import Button, ContentSwitcher, Input, Static
 
 from .. import config, logo
-from ..engine import errors, runner, update
+from ..engine import errors, local, runner, update
 from ..engine.options import DOWNLOAD, Choice
 from ..engine.probe import VideoInfo, fetch_thumbnail, probe
 from ..engine.runner import Job, Progress
-from ..widgets.queue import DownloadQueue, JobRow, short_path
+from ..widgets.queue import DownloadQueue, JobRow, short_path, throttled
 from ..widgets.video_card import VideoCard
-from .convert import ConvertScreen
+from .convert import ConvertScreen, remembered
+from .files import FilesPane
 from .settings import CookiesScreen, SettingsScreen
 from .sites import SitesScreen
 
 URL_RE = re.compile(r"^\s*(https?://)?([\w-]+\.)+[a-z]{2,}(/\S*)?\s*$", re.I)
-PROGRESS_INTERVAL = 0.15  # seconds between progress repaints per job
+DOWNLOAD_TAB, FILES_TAB = "download", "files"
+TABS = ((DOWNLOAD_TAB, "Download"), (FILES_TAB, "Convert files"))
 
 
 # Always shown, unlike Textual's Footer, which hides letter keys while the URL bar has focus.
@@ -46,19 +47,45 @@ KEY_LIST = (
     ("o", "open", "screen.reveal"),
     ("u", "update", "screen.update"),
     ("{url}", "", ""),
+    ("ctrl+t", "files", "screen.switch_tab"),
+    ("t", "themes", "app.change_theme"),
+    ("q", "quit", "app.quit"),
+)
+FILES_KEY_LIST = (
+    ("c", "convert", "screen.convert"),
+    ("f", "browse", "screen.browse"),
+    ("r", "remove", "screen.remove_file"),
+    ("x", "cancel", "screen.cancel_download"),
+    ("o", "open", "screen.reveal"),
+    ("{url}", "", ""),
+    ("ctrl+t", "download", "screen.switch_tab"),
     ("t", "themes", "app.change_theme"),
     ("q", "quit", "app.quit"),
 )
 URL_KEY = ("esc", "url bar", "screen.focus_url")
+FILES_INPUT_KEY = ("esc", "file bar", "screen.focus_url")
 TAB_KEY = ("tab", "use keys", "screen.leave_url")
 
 
-def key_bar(typing: bool) -> str:
+def key_bar(typing: bool, tab: str = DOWNLOAD_TAB) -> str:
+    key_list, input_key = (
+        (FILES_KEY_LIST, FILES_INPUT_KEY) if tab == FILES_TAB else (KEY_LIST, URL_KEY)
+    )
     keys = [
-        (TAB_KEY if typing else URL_KEY) if k == "{url}" else (k, label, action)
-        for k, label, action in KEY_LIST
+        (TAB_KEY if typing else input_key) if k == "{url}" else (k, label, action)
+        for k, label, action in key_list
     ]
     return "  ".join(f"[b $primary]{k}[/] [@click={action}]{label}[/]" for k, label, action in keys)
+
+
+def tab_bar(active: str) -> str:
+    bits = []
+    for tab, label in TABS:
+        if tab == active:
+            bits.append(f"[b $background on $primary] {label} [/]")
+        else:
+            bits.append(f"[@click=screen.show_tab('{tab}')] {label} [/]")
+    return "  ".join(bits)
 
 
 def rich_color(value: str | None, fallback: str) -> str:
@@ -83,6 +110,9 @@ class MainScreen(Screen):
         Binding("x", "cancel_download", "Cancel download"),
         Binding("o", "reveal", "Show file"),
         Binding("u", "update", "Update yt-dlp"),
+        Binding("f", "browse", "Browse files"),
+        Binding("r", "remove_file", "Remove file"),
+        Binding("ctrl+t", "switch_tab", "Switch tab", priority=True),
         Binding("escape", "focus_url", "URL bar"),
         Binding("q", "app.quit", "Quit"),
     ]
@@ -98,6 +128,8 @@ class MainScreen(Screen):
         self.running: Job | None = None
         self.last_file: str | None = None
         self.update_version: str | None = None
+        self.getting_ffmpeg = False
+        self.tab = DOWNLOAD_TAB
         self._debounce = None
 
     @property
@@ -107,13 +139,18 @@ class MainScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(id="logo")
         yield Static(id="status-line")
-        with Horizontal(id="url-row"):
-            yield Static("›", id="prompt")
-            yield Input(
-                placeholder="Paste a video link…  (YouTube, Vimeo, SoundCloud, X, …)", id="url"
-            )
-        yield VideoCard(id="card")
-        yield DownloadQueue(id="queue")
+        yield Static(tab_bar(self.tab), id="tabs")
+        with ContentSwitcher(initial="pane-download", id="panes"):
+            with Vertical(id="pane-download"):
+                with Horizontal(id="url-row", classes="source-row"):
+                    yield Static("›", classes="prompt")
+                    yield Input(
+                        placeholder="Paste a video link…  (YouTube, Vimeo, SoundCloud, X, …)",
+                        id="url",
+                    )
+                yield VideoCard(id="card")
+                yield DownloadQueue(id="queue")
+            yield FilesPane(id="pane-files")
         yield Static(id="keys")
 
     def on_mount(self) -> None:
@@ -124,10 +161,13 @@ class MainScreen(Screen):
         self.app.theme_changed_signal.subscribe(self, self._theme_changed)
         url_input = self.query_one("#url", Input)
         url_input.focus()
-        if self.initial_url:
+        if self.initial_url and (paths := local.parse_paths(self.initial_url)):
+            self.add_files(paths)  # `carrot clip.mov` opens the Convert files tab
+        elif self.initial_url:
             url_input.value = self.initial_url
             self.load(self.initial_url)
         self.check_for_update()
+        self.prefetch_ffmpeg()
 
     # ---------- layout bits ----------
 
@@ -155,7 +195,7 @@ class MainScreen(Screen):
 
     def _render_keys(self) -> None:
         # Letters type into the URL bar while it has focus, so say how to reach the shortcuts.
-        self.query_one("#keys", Static).update(key_bar(isinstance(self.focused, Input)))
+        self.query_one("#keys", Static).update(key_bar(isinstance(self.focused, Input), self.tab))
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
@@ -168,9 +208,15 @@ class MainScreen(Screen):
             bits.append(f"[b $warning]yt-dlp {self.update_version} available · press u[/]")
         else:
             bits.append(f"[dim]yt-dlp[/dim] {update.installed_version()}")
+        if self.getting_ffmpeg:
+            bits.append("[dim]getting ffmpeg…[/dim]")
         if self.settings.cookies_browser:
             bits.append(f"[dim]cookies[/dim] {self.settings.cookies_browser}")
-        bits.append(f"[dim]saving to[/dim] {escape(short_path(str(self.settings.download_path)))}")
+        if self.tab == FILES_TAB:
+            bits.append("[dim]saving next to each original[/dim]")
+        else:
+            where = escape(short_path(str(self.settings.download_path)))
+            bits.append(f"[dim]saving to[/dim] {where}")
         self.query_one("#status-line", Static).update("  [dim]·[/dim]  ".join(bits))
 
     def _theme_changed(self, _theme) -> None:
@@ -183,16 +229,25 @@ class MainScreen(Screen):
         if self._debounce:
             self._debounce.stop()
         value = event.value.strip()
+        if paths := local.parse_paths(value):
+            # A file dropped on the Download tab: it belongs on Convert files.
+            event.input.value = ""
+            self.add_files(paths)
+            return
         if looks_like_url(value) and value != self.last_url:
             # Paste arrives as one change; a short wait avoids firing while someone types.
             self._debounce = self.set_timer(0.35, lambda: self.load(value))
 
     def on_paste(self, event: Paste) -> None:
-        # Pasting a link works wherever focus is, not only in the URL bar.
-        url_input = self.query_one("#url", Input)
-        if self.focused is url_input:
+        # Pasting a link or dropping files works wherever focus is, not only in an input.
+        if isinstance(self.focused, Input):
             return
         text = event.text.strip()
+        if paths := local.parse_paths(text):
+            event.stop()
+            self.add_files(paths)
+            return
+        url_input = self.query_one("#url", Input)
         if looks_like_url(text):
             event.stop()
             url_input.value = text  # fires Input.Changed, which loads it
@@ -204,6 +259,10 @@ class MainScreen(Screen):
             return
         if self._debounce:
             self._debounce.stop()
+        if paths := local.parse_paths(value):
+            event.input.value = ""
+            self.add_files(paths)
+            return
         if value == self.last_url and self.info:
             self.query_one("#download", Button).focus()
             return
@@ -248,20 +307,61 @@ class MainScreen(Screen):
         self.query_one(VideoCard).show_error(errors.explain(exc))
         self.query_one("#url", Input).focus()
 
+    # ---------- tabs ----------
+
+    @property
+    def files(self) -> FilesPane:
+        return self.query_one(FilesPane)
+
+    def action_show_tab(self, tab: str) -> None:
+        self.tab = tab
+        self.query_one("#panes", ContentSwitcher).current = f"pane-{tab}"
+        self.query_one("#tabs", Static).update(tab_bar(tab))
+        self._render_status()
+        self.action_focus_url()
+
+    def action_switch_tab(self) -> None:
+        self.action_show_tab(FILES_TAB if self.tab == DOWNLOAD_TAB else DOWNLOAD_TAB)
+
+    def add_files(self, paths: list[Path]) -> None:
+        if self.tab != FILES_TAB:
+            self.action_show_tab(FILES_TAB)
+        self.files.add_paths(paths)
+
     # ---------- actions ----------
 
     def action_focus_url(self) -> None:
+        if self.tab == FILES_TAB:
+            self.files.focus_input()
+            self._render_keys()
+            return
         url = self.query_one("#url", Input)
         url.focus()
         url.action_select_all()
 
+    def action_browse(self) -> None:
+        if self.tab != FILES_TAB:
+            self.action_show_tab(FILES_TAB)
+        self.files.browse()
+
+    def action_remove_file(self) -> None:
+        if self.tab == FILES_TAB:
+            self.files.remove()
+        else:
+            self.app.bell()
+
     def action_download(self) -> None:
-        if self.info:
+        if self.tab == FILES_TAB:
+            self.app.bell()
+        elif self.info:
             self.enqueue(self.info, DOWNLOAD)
         else:
             self.app.bell()
 
     def action_convert(self) -> None:
+        if self.tab == FILES_TAB:
+            self.files.convert()
+            return
         if not self.info:
             self.app.bell()
             return
@@ -292,10 +392,12 @@ class MainScreen(Screen):
         self.app.push_screen(SitesScreen())
 
     def action_reveal(self) -> None:
-        if not self.last_file or not Path(self.last_file).exists():
-            self.notify("Nothing downloaded yet.", severity="warning")
+        last = self.files.last_file if self.tab == FILES_TAB else self.last_file
+        if not last or not Path(last).exists():
+            word = "converted" if self.tab == FILES_TAB else "downloaded"
+            self.notify(f"Nothing {word} yet.", severity="warning")
             return
-        reveal(self.last_file)
+        reveal(last)
 
     def action_update(self) -> None:
         self.notify("Updating yt-dlp…", title="Update")
@@ -326,6 +428,26 @@ class MainScreen(Screen):
         if app_newer:
             self.app.call_from_thread(self._app_update_found, app_newer)
 
+    @work(thread=True, group="ffmpeg-fetch")
+    def prefetch_ffmpeg(self) -> None:
+        """Download Carrot's own ffmpeg in the background if the installer didn't, so the first
+        conversion doesn't wait for it. It adds formats a system ffmpeg may lack."""
+        from ..engine import deps
+
+        if os.environ.get("CARROT_NO_FFMPEG_FETCH") or deps.bundled_ffmpeg_ready():
+            return
+        self.app.call_from_thread(self._getting_ffmpeg, True)
+        try:
+            deps.fetch_bundled_ffmpeg()
+        except Exception:
+            pass  # offline, say; conversions fetch it again when they need it
+        finally:
+            self.app.call_from_thread(self._getting_ffmpeg, False)
+
+    def _getting_ffmpeg(self, busy: bool) -> None:
+        self.getting_ffmpeg = busy
+        self._render_status()
+
     def _update_found(self, version: str) -> None:
         self.update_version = version
         self._render_status()
@@ -335,12 +457,7 @@ class MainScreen(Screen):
         self._render_status()
 
     def _remember(self, choice: Choice) -> None:
-        s = replace(self.settings, last_kind=choice.kind)
-        if choice.kind == "video":
-            s = replace(s, last_video_format=choice.fmt, last_video_quality=choice.quality)
-        else:
-            s = replace(s, last_audio_format=choice.fmt, last_audio_quality=choice.quality)
-        self.app.save_settings(s)
+        self.app.save_settings(remembered(self.settings, choice))
 
     # ---------- card buttons ----------
 
@@ -383,6 +500,9 @@ class MainScreen(Screen):
 
     def action_cancel_download(self) -> None:
         """Cancel the running download, or the next waiting one if nothing is running."""
+        if self.tab == FILES_TAB:
+            self.files.cancel_next()
+            return
         waiting = [j for j in self.jobs if j.state == runner.QUEUED]
         target = self.running or (waiting[0] if waiting else None)
         if target is None:
@@ -415,18 +535,7 @@ class MainScreen(Screen):
 
     @work(thread=True, group="jobs")
     def _run_job(self, job: Job, download_dir: Path, cookies_browser: str) -> None:
-        last = {"t": 0.0, "state": None}
-
-        def on_progress(p: Progress) -> None:
-            # Throttle repaints, but never drop a new step or a finished one: a part that
-            # downloads in under PROGRESS_INTERVAL would otherwise sit at 0% on screen.
-            now = time.monotonic()
-            step = (p.state, p.status)
-            finished = p.fraction is not None and p.fraction >= 1
-            if step == last["state"] and not finished and now - last["t"] < PROGRESS_INTERVAL:
-                return
-            last.update(t=now, state=step)
-            self.app.call_from_thread(self._job_progress, job, p)
+        on_progress = throttled(lambda p: self.app.call_from_thread(self._job_progress, job, p))
 
         try:
             path = runner.run_job(job, download_dir, on_progress, cookies_browser=cookies_browser)
