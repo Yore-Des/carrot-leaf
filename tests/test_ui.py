@@ -277,3 +277,14 @@ async def test_cancel_running_and_waiting(fakes, monkeypatch):
         assert await settle(pilot, lambda: first.state == runner.CANCELLED)
         assert screen.running is None
         assert not screen.query_one(f"#job-{first.id} .job-cancel").visible
+
+
+async def test_status_line_shows_both_versions(fakes):
+    from carrot_leaf import __version__
+
+    app = CarrotLeafApp()
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        text = str(app.screen.query_one("#status-line").render())
+        assert f"carrot {__version__}" in text and "yt-dlp" in text
+        assert text.index("carrot") < text.index("yt-dlp")

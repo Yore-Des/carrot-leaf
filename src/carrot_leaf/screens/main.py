@@ -199,7 +199,9 @@ class MainScreen(Screen):
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
-        bits = []
+        from .. import __version__  # looked up here, not at import, to keep startup fast
+
+        bits = [f"[dim]carrot[/dim] {__version__}"]
         if self.app.pending_app_update:
             bits.append(
                 f"[b $primary]carrot-leaf {self.app.pending_app_update} installs when you quit[/]"
