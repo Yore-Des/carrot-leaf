@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from rich.markup import escape
@@ -133,13 +134,21 @@ class FilesPane(Vertical):
             self.app.call_from_thread(self._read_failed, None, exc, len(paths))
             return
         probe_dir = next(iter(self.ffmpeg_dirs), None)
-        for path in paths:
+
+        def read(path: Path) -> FileInfo | Exception:
             try:
-                info = local.probe_file(path, probe_dir)
+                return local.probe_file(path, probe_dir)
             except Exception as exc:
-                self.app.call_from_thread(self._read_failed, path, exc, 1)
-            else:
-                self.app.call_from_thread(self._file_read, info)
+                return exc
+
+        # Each read waits on an ffprobe process, so a dropped batch reads a few at a time.
+        # map() hands results back in the order the files were dropped.
+        with ThreadPoolExecutor(max_workers=min(4, len(paths))) as pool:
+            for path, result in zip(paths, pool.map(read, paths), strict=True):
+                if isinstance(result, Exception):
+                    self.app.call_from_thread(self._read_failed, path, result, 1)
+                else:
+                    self.app.call_from_thread(self._file_read, result)
 
     def _file_read(self, info: FileInfo) -> None:
         self.reading -= 1
@@ -235,6 +244,19 @@ class FilesPane(Vertical):
 
     def convert_options(self) -> ConvertOptions:
         files = list(self.files)
+        # Look the ffmpegs up once for the whole dialog, and each format once: the dialog
+        # asks about every format at least twice (to draw it, then to pick a starting one).
+        dirs = self.ffmpeg_dirs
+        seen: dict[tuple[str, str], str] = {}
+
+        def has(encoder: str) -> bool:
+            return not dirs or any(deps.ffmpeg_has_encoder(d, encoder) for d in dirs)
+
+        def missing(kind: str, fmt: str) -> str:
+            if (kind, fmt) not in seen:
+                seen[kind, fmt] = local.missing_encoder(kind, fmt, has)
+            return seen[kind, fmt]
+
         kinds = [k for k in KIND_ORDER if any(k in local.kinds_for(f) for f in files)]
 
         def applicable(kind: str) -> list[FileInfo]:
@@ -267,7 +289,7 @@ class FilesPane(Vertical):
             kinds=kinds,
             formats={k: local.formats_for(k) for k in kinds},
             note_for=local.format_note,
-            missing=lambda kind, fmt: local.missing_encoder(kind, fmt, self.has_encoder),
+            missing=missing,
             qualities=qualities,
             where=where,
             action="convert",

@@ -11,9 +11,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from yt_dlp import YoutubeDL
-from yt_dlp.utils import DownloadCancelled
-
 from . import deps
 from .options import Choice, build_options
 
@@ -103,6 +100,10 @@ def run_job(
 
 
 def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
+    # yt-dlp takes a while to import, so it loads with the first download, not at startup.
+    from yt_dlp import YoutubeDL
+    from yt_dlp.utils import DownloadCancelled
+
     opts = build_options(
         job.choice,
         str(work),

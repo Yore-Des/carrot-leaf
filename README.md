@@ -171,6 +171,12 @@ machine, the dialog shows it greyed out with what it needs.
 uv tool uninstall carrot-leaf     # or: pipx uninstall carrot-leaf
 ```
 
+Carrot Leaf's ffmpeg is kept outside the app, so updates don't download it again. To
+remove it too, delete the `ffmpeg` folder next to your settings (see "Where files go"):
+`~/Library/Application Support/carrot-leaf/ffmpeg` on macOS,
+`~/.local/share/carrot-leaf/ffmpeg` on Linux, `%LOCALAPPDATA%\carrot-leaf\ffmpeg` on
+Windows.
+
 ## Development
 
 ```sh

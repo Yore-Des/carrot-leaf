@@ -127,6 +127,8 @@ class JobRow(Vertical):
     def __init__(self, job: Job) -> None:
         super().__init__(id=f"job-{job.id}")
         self.job = job
+        self._labels: dict[str, Static] = {}
+        self._shown: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="job-head"):
@@ -139,50 +141,64 @@ class JobRow(Vertical):
             yield Static(classes="job-status")
 
     def on_mount(self) -> None:
+        for name in ("mark", "title", "kind", "status"):
+            self._labels[name] = self.query_one(f".job-{name}", Static)
+        self._bar = self.query_one(BlockBar)
+        self._cancel = self.query_one(".job-cancel", Button)
         self.refresh_job()
 
+    def _set(self, name: str, text: str) -> None:
+        # Progress arrives several times a second; most of it changes only the status line,
+        # and every Static.update re-measures the row, so skip text that hasn't changed.
+        if self._shown.get(name) != text:
+            self._shown[name] = text
+            self._labels[name].update(text)
+
     def refresh_job(self) -> None:
+        if not self._labels:  # not mounted yet; on_mount draws it
+            return
         job = self.job
-        self.query_one(".job-title", Static).update(escape(job.title))
+        self._set("title", escape(job.title))
         kind = job.choice.label
         if job.file is not None:
             kind = f"{job.file.path.suffix.lstrip('.').upper() or 'FILE'} → {kind}"
-        self.query_one(".job-kind", Static).update(escape(kind))
-        bar = self.query_one(BlockBar)
-        status = self.query_one(".job-status", Static)
+        self._set("kind", escape(kind))
+        bar = self._bar
         self.set_class(job.state == runner.DONE, "-done")
         self.set_class(job.state == runner.FAILED, "-failed")
         self.set_class(job.state == runner.CANCELLED, "-cancelled")
         self.set_class(job.state not in (*runner.FINISHED, runner.QUEUED), "-running")
         mark = {runner.DONE: "✓", runner.FAILED: "✗", runner.CANCELLED: "–", runner.QUEUED: "·"}
         busy = "⟳" if job.file is not None else "↓"
-        self.query_one(".job-mark", Static).update(mark.get(job.state, busy))
-        cancel = self.query_one(".job-cancel", Button)
+        self._set("mark", mark.get(job.state, busy))
+        cancel = self._cancel
         cancel.visible = job.state not in runner.FINISHED  # keeps its space so columns line up
         cancel.disabled = job.cancelled
 
         if job.state == runner.DONE:
             bar.fraction = 1.0
-            status.update(f"[b $success]✓ Saved[/] → {escape(short_path(job.filepath or ''))}")
+            self._set(
+                "status", f"[b $success]✓ Saved[/] → {escape(short_path(job.filepath or ''))}"
+            )
         elif job.state == runner.CANCELLED:
             bar.fraction = 0.0
-            status.update("[dim]Cancelled[/dim]")
+            self._set("status", "[dim]Cancelled[/dim]")
         elif job.cancelled:
             bar.fraction = None
-            status.update("[dim]Cancelling…[/dim]")
+            self._set("status", "[dim]Cancelling…[/dim]")
         elif job.state == runner.FAILED:
             bar.fraction = 0.0
             friendly = errors.explain(job.error or "")
             hint = f" [dim]{escape(friendly.hint)}[/dim]" if friendly.hint else ""
             if friendly.kind == errors.LOGIN:
                 hint = " [dim]Press s to choose a browser for cookies, then try again.[/dim]"
-            status.update(f"[b $error]✗ {escape(friendly.message)}[/]{hint}")
+            self._set("status", f"[b $error]✗ {escape(friendly.message)}[/]{hint}")
         elif job.state == runner.QUEUED:
             bar.fraction = 0.0
-            status.update("[dim]Waiting in line[/dim]")
+            self._set("status", "[dim]Waiting in line[/dim]")
         elif job.fraction is None:
             bar.fraction = None
-            status.update(escape(job.status) + "…")
+            self._set("status", escape(job.status) + "…")
         else:
             bar.fraction = job.fraction
             bits = [job.status, f"{job.fraction * 100:.0f}%"]
@@ -190,7 +206,7 @@ class JobRow(Vertical):
                 bits.append(f"{human_size(job.speed)}/s")
             if job.eta is not None:
                 bits.append(f"{human_eta(job.eta)} left")
-            status.update(escape(" · ".join(bits)))
+            self._set("status", escape(" · ".join(bits)))
 
     @on(Button.Pressed, ".job-cancel")
     def _cancel_pressed(self, event: Button.Pressed) -> None:
@@ -210,6 +226,7 @@ class DownloadQueue(VerticalScroll):
     ) -> None:
         super().__init__(**kwargs)
         self.queue_title, self.busy, self.empty = title, busy, empty
+        self._rows: dict[int, JobRow] = {}
 
     def compose(self) -> ComposeResult:
         yield Static(self.empty, classes="queue-empty")
@@ -220,14 +237,13 @@ class DownloadQueue(VerticalScroll):
     def add(self, job: Job) -> None:
         self.query_one(".queue-empty").display = False
         row = JobRow(job)
+        self._rows[job.id] = row
         self.mount(row, before=0)
         self.scroll_home(animate=False)
 
     def refresh_job(self, job: Job) -> None:
-        try:
-            self.query_one(f"#job-{job.id}", JobRow).refresh_job()
-        except Exception:
-            pass
+        if row := self._rows.get(job.id):
+            row.refresh_job()
 
     def update_title(self, running: int, queued: int) -> None:
         bits = []

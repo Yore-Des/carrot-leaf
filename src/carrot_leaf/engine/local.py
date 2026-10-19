@@ -255,6 +255,9 @@ IMAGE_TARGETS: dict[str, ImageTarget] = {
 # Formats only Pillow (with a plugin) can write: no ffmpeg build Carrot uses has a JPEG XL
 # encoder, and ffmpeg can't write HEIF at all. Value: the package that adds the format.
 PILLOW_ONLY = {"jxl": "pillow-jxl-plugin", "heic": "pillow-heif"}
+PILLOW_PLUGIN_MODULES = {"jxl": "pillow_jxl", "heic": "pillow_heif"}
+# Pillow formats that need an optional codec built into Pillow; the rest always ship with it.
+PILLOW_FEATURES = {"webp": "webp", "avif": "avif", "jp2": "jpg_2000"}
 # Pillow's names for the image formats it can save.
 PILLOW_NAMES = {
     "jpg": "JPEG",
@@ -773,8 +776,9 @@ def _convert_image(info, choice, out, work, has_encoder, ffmpeg_dir, on_progress
     ffmpeg_can = choice.fmt not in PILLOW_ONLY and _pick(
         IMAGE_TARGETS[choice.fmt].encoders, has_encoder
     )
+    # Cheap checks first, so a plain ffmpeg conversion never loads Pillow.
     by_pillow = choice.fmt in PILLOW_ONLY or (
-        pillow_can_save(choice.fmt) and (info.reader == "pillow" or not ffmpeg_can)
+        (info.reader == "pillow" or not ffmpeg_can) and pillow_can_save(choice.fmt)
     )
     if by_pillow:
         source = info.path
@@ -834,8 +838,28 @@ def pillow():
 
 
 def pillow_can_save(fmt: str) -> bool:
+    if fmt in PILLOW_ONLY:
+        # The plugin being installed is enough to know; importing it (and every Pillow
+        # format) just to grey out a list entry would cost ~0.1 s and its native libraries.
+        return _installed(PILLOW_PLUGIN_MODULES[fmt])
+    if feature := PILLOW_FEATURES.get(fmt):
+        # Pillow's feature table answers without loading all ~40 of its format plugins.
+        import warnings
+
+        from PIL import features
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # an older Pillow that doesn't know the feature
+            return bool(features.check(feature))
     name = PILLOW_NAMES.get(fmt)
     return bool(name) and name in pillow().SAVE
+
+
+@cache
+def _installed(module: str) -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec(module) is not None
 
 
 def _pillow_opens(path: Path) -> bool:

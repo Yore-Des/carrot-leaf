@@ -13,15 +13,33 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+from functools import cache
 
 PYPI_URL = "https://pypi.org/pypi/yt-dlp/json"
 APP_PYPI_URL = "https://pypi.org/pypi/carrot-leaf/json"
 
 
+@cache
 def installed_version() -> str:
-    from yt_dlp.version import __version__
+    """yt-dlp's version, read once like an import would, without importing all of yt-dlp
+    (which the status line would otherwise pay for at every launch)."""
+    if module := sys.modules.get("yt_dlp.version"):
+        return module.__version__
+    import importlib.util
 
-    return __version__
+    try:
+        spec = importlib.util.find_spec("yt_dlp")
+        folder = next(iter(spec.submodule_search_locations or []))
+        version_spec = importlib.util.spec_from_file_location(
+            "_carrot_ytdlp_version", os.path.join(folder, "version.py")
+        )
+        module = importlib.util.module_from_spec(version_spec)
+        version_spec.loader.exec_module(module)
+        return module.__version__
+    except Exception:
+        from yt_dlp.version import __version__
+
+        return __version__
 
 
 def _key(version: str) -> tuple[int, ...]:

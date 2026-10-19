@@ -1,21 +1,37 @@
 """Locate ffmpeg/ffprobe and a JavaScript runtime.
 
-Binaries on PATH win. Otherwise fall back to the copies that ship with the
-package: static-ffmpeg (downloaded once, by `carrot setup` or on first use) and the
-PyPI `deno` wheel. Converting local files can use both ffmpegs: whichever has the
-encoder a format needs.
+Binaries on PATH win. Otherwise fall back to Carrot Leaf's own copies: a static ffmpeg
+build (downloaded once, by `carrot setup` or on first use) and the PyPI `deno` wheel.
+Converting local files can use both ffmpegs: whichever has the encoder a format needs.
 """
 
 from __future__ import annotations
 
-import contextlib
-import io
 import os
+import platform
 import shutil
+import stat
 import subprocess
+import sys
+import tempfile
+import urllib.request
+import zipfile
 from dataclasses import dataclass
+from datetime import datetime
 from functools import cache
 from pathlib import Path
+
+# Static ffmpeg + ffprobe builds, one zip per platform holding a folder named after the key.
+# These are the builds the static-ffmpeg package (3.0) downloads; Carrot Leaf fetches them
+# itself so it doesn't install that package's unrelated dependencies (twine, keyring, ...).
+FFMPEG_ZIPS = {
+    "win32": "https://github.com/zackees/ffmpeg_bins/raw/main/v8.0/win32.zip",
+    "darwin": "https://github.com/zackees/ffmpeg_bins/raw/main/v8.0/darwin.zip",
+    "darwin_arm64": "https://github.com/zackees/ffmpeg_bins/raw/main/v8.0/darwin_arm64.zip",
+    "linux": "https://github.com/zackees/ffmpeg_bins/raw/main/v8.0/linux.zip",
+    "linux_arm64": "https://github.com/zackees/ffmpeg_bins/raw/main/v8.0/linux_arm64.zip",
+}
+CRUMB = "installed.crumb"
 
 
 @dataclass(frozen=True)
@@ -31,19 +47,30 @@ def system_ffmpeg() -> Tool | None:
     return None
 
 
-def bundled_ffmpeg_ready() -> bool:
-    from static_ffmpeg import run
+def platform_key() -> str:
+    arm = platform.machine().lower() in ("arm64", "aarch64")
+    if sys.platform == "win32":
+        return "win32"
+    if sys.platform in ("darwin", "linux"):
+        return f"{sys.platform}_arm64" if arm else sys.platform
+    return sys.platform
 
-    return os.path.exists(os.path.join(run.get_platform_dir(), "installed.crumb"))
+
+def bundled_dir() -> Path:
+    """Where the static build lives. Outside the app's environment, so it survives upgrades."""
+    import platformdirs
+
+    data = platformdirs.user_data_dir("carrot-leaf", appauthor=False)
+    return Path(data) / "ffmpeg" / platform_key()
+
+
+def bundled_ffmpeg_ready() -> bool:
+    return (bundled_dir() / CRUMB).exists()
 
 
 def bundled_ffmpeg() -> Tool | None:
     """The downloaded static build, if it's there."""
-    if not bundled_ffmpeg_ready():
-        return None
-    from static_ffmpeg import run
-
-    return Tool(run.get_platform_dir(), bundled=True)
+    return Tool(str(bundled_dir()), bundled=True) if bundled_ffmpeg_ready() else None
 
 
 def ffmpeg_candidates() -> list[Tool]:
@@ -54,16 +81,73 @@ def ffmpeg_candidates() -> list[Tool]:
 def fetch_bundled_ffmpeg(show_progress: bool = False) -> Tool:
     """Download the static build if it isn't there yet (about 50 MB, once). Blocks.
 
-    `show_progress` lets static-ffmpeg print its progress bar; leave it off inside the TUI.
+    `show_progress` prints a percentage; leave it off inside the TUI. Safe to run from two
+    processes at once: each unpacks into its own folder and the first to finish wins.
     """
-    from static_ffmpeg import run
+    target = bundled_dir()
+    if (target / CRUMB).exists():
+        return Tool(str(target), bundled=True)
+    key = platform_key()
+    url = FFMPEG_ZIPS.get(key)
+    if url is None:
+        raise OSError(f"No ffmpeg build for {key}. Install ffmpeg yourself.")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=".download-", dir=target.parent))
+    try:
+        archive = work / "ffmpeg.zip"
+        _download(url, archive, show_progress)
+        with zipfile.ZipFile(archive) as zf:
+            zf.extractall(work / "unpacked")  # zipfile keeps members inside this folder
+        archive.unlink()
+        unpacked = work / "unpacked" / key
+        exe = ".exe" if sys.platform == "win32" else ""
+        for name in ("ffmpeg", "ffprobe"):
+            path = unpacked / f"{name}{exe}"
+            if not path.is_file():
+                raise OSError(f"The ffmpeg download has no {path.name}.")
+            if not exe:
+                path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        (unpacked / CRUMB).write_text(f"installed from {url} on {datetime.now()}")
+        if target.exists() and not (target / CRUMB).exists():
+            shutil.rmtree(target, ignore_errors=True)  # a broken earlier attempt
+        try:
+            os.replace(unpacked, target)
+        except OSError:
+            if not (target / CRUMB).exists():  # not just another process winning the race
+                raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    return Tool(str(target), bundled=True)
 
+
+def _download(url: str, dest: Path, show_progress: bool) -> None:
+    request = urllib.request.Request(url, headers={"User-Agent": "carrot-leaf"})
+    with (
+        urllib.request.urlopen(request, timeout=60, context=_tls()) as resp,
+        open(dest, "wb") as out,
+    ):
+        total = int(resp.headers.get("Content-Length") or 0)
+        done, shown = 0, -1
+        while chunk := resp.read(1 << 18):
+            out.write(chunk)
+            done += len(chunk)
+            if show_progress and total and (pct := done * 100 // total) != shown:
+                print(f"\r  {pct}% of {total / 2**20:.0f} MB", end="", flush=True)
+                shown = pct
     if show_progress:
-        ffmpeg, _ = run.get_or_fetch_platform_executables_else_raise()
-    else:
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            ffmpeg, _ = run.get_or_fetch_platform_executables_else_raise()
-    return Tool(str(Path(ffmpeg).parent), bundled=True)
+        print()
+
+
+def _tls():
+    """certifi's CA bundle when it's there (it comes with yt-dlp), else the system's."""
+    import ssl
+
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
 
 
 def find_ffmpeg(fetch: bool = True) -> Tool | None:
@@ -76,7 +160,6 @@ def find_ffmpeg(fetch: bool = True) -> Tool | None:
         return tool
     if not fetch:
         return bundled_ffmpeg()
-    # static-ffmpeg prints download progress to stdout, which would scribble over the TUI.
     return fetch_bundled_ffmpeg()
 
 

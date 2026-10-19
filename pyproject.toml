@@ -23,7 +23,6 @@ dependencies = [
     "platformdirs>=4",
     "tomli-w>=1.0",
     "tomli>=2.0; python_version < '3.11'",
-    "static-ffmpeg>=3.0",
     "deno>=2.0",
     "pillow-heif>=0.18",
     "pillow-jxl-plugin>=1.3",

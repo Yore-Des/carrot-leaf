@@ -6,8 +6,6 @@ import io
 import urllib.request
 from dataclasses import dataclass, field
 
-from yt_dlp import YoutubeDL
-
 from . import deps
 
 
@@ -75,6 +73,8 @@ def pick_thumbnail(info: dict) -> str | None:
 
 
 def probe(url: str, cookies_browser: str = "") -> VideoInfo:
+    from yt_dlp import YoutubeDL  # loaded with the first link, not at startup
+
     opts = {
         "quiet": True,
         "no_warnings": True,
