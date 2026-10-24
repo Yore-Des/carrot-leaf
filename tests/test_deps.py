@@ -8,6 +8,8 @@ import pytest
 
 from carrot_leaf.engine import deps
 
+EXE = ".exe" if sys.platform == "win32" else ""
+
 
 def fake_build(tmp_path, key, exe=""):
     """A zip laid out like the real ones: a folder named after the platform key."""
@@ -36,7 +38,7 @@ def test_fetch_unpacks_once(bundle, monkeypatch):
     assert deps.bundled_ffmpeg_ready()
     assert deps.bundled_ffmpeg() == tool
     if sys.platform != "win32":
-        assert (bundle / "ffmpeg").stat().st_mode & 0o111
+        assert (bundle / f"ffmpeg{EXE}").stat().st_mode & 0o111
     # Nothing left behind but the build itself.
     assert sorted(p.name for p in bundle.parent.iterdir()) == [bundle.name]
 
@@ -49,16 +51,16 @@ def test_fetch_unpacks_once(bundle, monkeypatch):
 
 def test_fetch_replaces_a_broken_attempt(bundle):
     bundle.mkdir(parents=True)
-    (bundle / "ffmpeg").write_text("half a file")  # no crumb: an interrupted install
+    (bundle / f"ffmpeg{EXE}").write_text("half a file")  # no crumb: an interrupted install
     deps.fetch_bundled_ffmpeg()
     assert (bundle / deps.CRUMB).exists()
-    assert "fake" in (bundle / "ffprobe").read_text()
+    assert "fake" in (bundle / f"ffprobe{EXE}").read_text()
 
 
 def test_fetch_rejects_a_bad_download(bundle, tmp_path, monkeypatch):
     broken = tmp_path / "broken.zip"
     with zipfile.ZipFile(broken, "w") as zf:
-        zf.writestr(f"{deps.platform_key()}/ffmpeg", "x")  # no ffprobe
+        zf.writestr(f"{deps.platform_key()}/ffmpeg{EXE}", "x")  # no ffprobe
     monkeypatch.setitem(deps.FFMPEG_ZIPS, deps.platform_key(), broken.as_uri())
     with pytest.raises(OSError, match="ffprobe"):
         deps.fetch_bundled_ffmpeg()

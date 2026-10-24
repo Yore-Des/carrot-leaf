@@ -2,6 +2,7 @@
 the pure parts, without the network or a real ffmpeg."""
 
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -122,7 +123,8 @@ def test_sponsorblock_remove_and_mark():
 def test_split_chapters_go_in_a_folder():
     opts = build_options(Choice("audio", "m4a", extras=Extras(split_chapters=True)), "/x")
     assert keys(opts)[-1] == "FFmpegSplitChapters"
-    assert opts["outtmpl"]["chapter"].startswith("/x/%(title).180B [%(id)s]/")
+    folder = os.path.join("/x", "%(title).180B [%(id)s]")
+    assert opts["outtmpl"]["chapter"].startswith(folder + os.sep)
 
 
 # ---------- filename templates ----------
@@ -130,7 +132,7 @@ def test_split_chapters_go_in_a_folder():
 
 def test_default_template_is_unchanged():
     opts = build_options(Choice("video", "mp4"), "/x")
-    assert opts["outtmpl"]["default"] == "/x/%(title).180B [%(id)s].%(ext)s"
+    assert opts["outtmpl"]["default"] == os.path.join("/x", "%(title).180B [%(id)s].%(ext)s")
 
 
 def test_template_with_folders_and_literal_fields():
