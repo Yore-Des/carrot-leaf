@@ -187,7 +187,7 @@ async def test_convert_dialog_extras(fakes):
         dialog = app.screen
         dialog.query_one("#kind").active = "audio"
         await pilot.pause()
-        assert dialog.query_one("#audio-row").display
+        assert dialog.query_one("#volume-row").display
         dialog.query_one("#clip-start").value = "0:10"
         dialog.query_one("#clip-end").value = "0:05"
         await pilot.pause()
@@ -265,3 +265,29 @@ def test_cli_convert(monkeypatch, tmp_path, capsys):
     assert seen[0].kind == "image" and seen[0].extras.max_kb == 50
     assert seen[0].extras.strip_metadata
     assert batch.main(["convert", str(src), "-f", "mp3"]) == 1  # a picture has no sound
+
+
+async def test_options_fold_shows_what_is_on(fakes):
+    from textual.widgets import Collapsible
+
+    app = CarrotLeafApp()
+    async with app.run_test(size=(110, 50)) as pilot:
+        screen = app.screen
+        screen.load(URL)
+        assert await settle(pilot, lambda: screen.info is not None)
+        await pilot.press("c")
+        assert await settle(pilot, lambda: isinstance(app.screen, ConvertScreen))
+        dialog = app.screen
+        fold = dialog.query_one("#extras", Collapsible)
+        assert fold.collapsed
+        assert "subtitles" in str(fold.title)  # nothing on yet: lists what's available
+        dialog.query_one("#subs").value = "embed"  # works while folded
+        await pilot.pause()
+        assert "subs" in str(fold.title)
+        await pilot.press("o")
+        assert not fold.collapsed
+        assert dialog.choice().extras.subtitles == "embed"
+        assert dialog.query_one("#sub-langs").disabled is False
+        dialog.query_one("#subs").value = ""
+        await pilot.pause()
+        assert dialog.query_one("#sub-langs").disabled

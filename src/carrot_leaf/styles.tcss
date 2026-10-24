@@ -564,29 +564,107 @@ Select > SelectOverlay {
     border: solid $primary;
 }
 
-/* ---------- convert extras: one compact line per option ---------- */
+/* ---------- convert options: a two-column form under the pickers ---------- */
 
 #extras {
     height: auto;
     margin-top: 1;
-    padding-top: 1;
-    border-top: solid $panel;
+    padding: 0;
+    border: none;
+    background: $background;
 }
 
-.extra-row, .settings-row, #latest-row {
+#extras:focus-within {
+    background-tint: $foreground 0%;
+}
+
+#extras CollapsibleTitle {
+    width: 1fr;
+    padding: 0;
+    color: $text;
+    text-style: none;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#extras CollapsibleTitle:hover {
+    background: $panel;
+}
+
+#extras CollapsibleTitle:focus {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+#extras Contents {
+    height: auto;
+    padding: 1 0 0 0;
+}
+
+/* Rows indent under the title's arrow, so labels and the title text share one edge. */
+#extras .extra-row {
+    padding-left: 2;
+}
+
+/* Labels share one column; controls run from there to the right edge of the Quality list. */
+.extra-row {
     height: 1;
     margin-bottom: 1;
 }
 
 .extra-label {
-    width: 14;
+    width: 16;
     color: $text-muted;
 }
 
+.extra-controls {
+    width: 1fr;
+    height: 1;
+}
+
+.extra-controls Input, .extra-controls Select {
+    width: 1fr;
+}
+
 .extra-to {
-    width: auto;
-    margin: 0 1;
+    width: 5;
     color: $text-muted;
+    text-align: center;
+}
+
+.extra-unit {
+    width: 5;
+    color: $text-muted;
+    text-align: right;
+}
+
+#sub-langs {
+    width: 18;
+    margin-left: 2;
+}
+
+#extras Input, #latest {
+    background: $panel;
+}
+
+#extras Input:focus, #latest:focus {
+    background: $primary 30%;
+}
+
+#extras Input:disabled {
+    background: $panel 50%;
+    color: $text-disabled;
+}
+
+.extra-row Toggle {
+    width: auto;
+}
+
+/* Used outside the dialog by the playlist picker and Settings. */
+.settings-row, #latest-row {
+    height: 1;
+    margin-bottom: 1;
 }
 
 .extra-hint {
@@ -596,30 +674,12 @@ Select > SelectOverlay {
     text-overflow: ellipsis;
 }
 
-#clip-start, #clip-end, #max-kb, #latest {
+#latest {
     width: 10;
 }
 
-#sub-langs {
-    width: 12;
-    margin-left: 2;
-}
-
-#extras Select, .settings-row Select {
+.settings-row Select {
     width: 24;
-}
-
-#extras Checkbox {
-    width: auto;
-    margin-right: 3;
-}
-
-#extras Input, #latest {
-    background: $panel;
-}
-
-#extras Input:focus, #latest:focus {
-    background: $primary 30%;
 }
 
 /* ---------- settings additions ---------- */
@@ -684,12 +744,12 @@ Select > SelectOverlay {
 }
 
 /* Compact dropdowns on one-line rows: no border, a filled chip like the inputs. */
-#extras Select > SelectCurrent, .settings-row Select > SelectCurrent {
+.extra-controls Select > SelectCurrent, .settings-row Select > SelectCurrent {
     border: none;
     background: $panel;
 }
 
-#extras Select:focus > SelectCurrent, .settings-row Select:focus > SelectCurrent {
+.extra-controls Select:focus > SelectCurrent, .settings-row Select:focus > SelectCurrent {
     border: none;
     background: $primary 30%;
 }

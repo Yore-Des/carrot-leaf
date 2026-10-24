@@ -10,10 +10,12 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.content import Content
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
     Checkbox,
+    Collapsible,
     Input,
     Label,
     OptionList,
@@ -40,6 +42,7 @@ from ..engine.options import (
     video_qualities,
 )
 from ..engine.probe import VideoInfo
+from ..widgets.toggle import Toggle
 
 TAB_NAMES = {"video": "Video", "audio": "Audio", "image": "Image", "frames": "Frames"}
 
@@ -184,8 +187,22 @@ def remembered(settings: Settings, choice: Choice) -> Settings:
     )
 
 
+# What the folded Options line lists, per tab, when nothing is switched on yet.
+EXTRA_NAMES = {
+    CLIP: "clip",
+    SUBTITLES: "subtitles",
+    SPONSORBLOCK: "SponsorBlock",
+    CHAPTERS: "chapters",
+    NORMALIZE: "volume",
+    IMAGE_TOOLS: "size, metadata",
+}
+
+
 class ConvertScreen(ModalScreen[Choice | None]):
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("o", "toggle_options", "Options", show=False),
+    ]
 
     def __init__(self, source: VideoInfo | ConvertOptions, settings: Settings) -> None:
         super().__init__()
@@ -235,73 +252,92 @@ class ConvertScreen(ModalScreen[Choice | None]):
                 yield Button("cancel", id="cancel")
 
     def _compose_extras(self) -> ComposeResult:
+        # A two-column form under the pickers: labels line up on the left, and every
+        # control stretches to the same right edge as the Quality list above it.
+        # Folded by default into one line that says what's on; open, it's a two-column form
+        # whose controls end at the same right edge as the Quality list above.
         s, extras = self.settings, self.options.extras
-        with Vertical(id="extras"):
+        with Collapsible(
+            title="Options", collapsed=True, collapsed_symbol="▸", expanded_symbol="▾", id="extras"
+        ):
             if CLIP in extras:
                 with Horizontal(classes="extra-row", id="clip-row"):
                     yield Label("Clip", classes="extra-label")
-                    yield Input(placeholder="start", id="clip-start", compact=True)
-                    yield Label("to", classes="extra-to")
-                    end = time_text(self.options.duration) if self.options.duration else "end"
-                    yield Input(placeholder=end, id="clip-end", compact=True)
-                    yield Static("[dim]1:30 or 90, blank for all[/dim]", classes="extra-hint")
+                    with Horizontal(classes="extra-controls"):
+                        yield Input(placeholder="from 0:00", id="clip-start", compact=True)
+                        yield Label("→", classes="extra-to")
+                        end = time_text(self.options.duration) if self.options.duration else "end"
+                        yield Input(placeholder=f"to {end}", id="clip-end", compact=True)
             if SUBTITLES in extras:
                 with Horizontal(classes="extra-row", id="subs-row"):
                     yield Label("Subtitles", classes="extra-label")
-                    yield Select(
-                        SUBTITLE_CHOICES["video"],
-                        value=s.last_subtitles if s.last_subtitles in ("embed", "srt") else "",
-                        allow_blank=False,
-                        compact=True,
-                        id="subs",
-                    )
-                    yield Input(s.last_sub_langs, placeholder="en", id="sub-langs", compact=True)
-                    yield Static("[dim]languages: en, de, es…[/dim]", classes="extra-hint")
+                    with Horizontal(classes="extra-controls"):
+                        yield Select(
+                            SUBTITLE_CHOICES["video"],
+                            value=s.last_subtitles if s.last_subtitles in ("embed", "srt") else "",
+                            allow_blank=False,
+                            compact=True,
+                            id="subs",
+                        )
+                        yield Input(
+                            s.last_sub_langs,
+                            placeholder="languages",
+                            id="sub-langs",
+                            compact=True,
+                            tooltip="Languages, comma separated: en, de, es",
+                        )
             if SPONSORBLOCK in extras:
                 with Horizontal(classes="extra-row", id="sponsor-row"):
                     yield Label("SponsorBlock", classes="extra-label")
-                    yield Select(
-                        SPONSOR_CHOICES,
-                        value=s.last_sponsorblock
-                        if s.last_sponsorblock in ("remove", "mark")
-                        else "",
-                        allow_blank=False,
-                        compact=True,
-                        id="sponsor",
-                    )
-            if CHAPTERS in extras or NORMALIZE in extras:
-                with Horizontal(classes="extra-row", id="audio-row"):
-                    yield Label("", classes="extra-label")
-                    if CHAPTERS in extras:
-                        yield Checkbox("One file per chapter", id="split", compact=True)
-                    if NORMALIZE in extras:
-                        yield Checkbox(
-                            "Even out the volume", s.last_normalize, id="normalize", compact=True
+                    with Horizontal(classes="extra-controls"):
+                        yield Select(
+                            SPONSOR_CHOICES,
+                            value=s.last_sponsorblock
+                            if s.last_sponsorblock in ("remove", "mark")
+                            else "",
+                            allow_blank=False,
+                            compact=True,
+                            id="sponsor",
                         )
+            if CHAPTERS in extras:
+                with Horizontal(classes="extra-row", id="chapters-row"):
+                    yield Label("Chapters", classes="extra-label")
+                    with Horizontal(classes="extra-controls"):
+                        yield Toggle("One file per chapter", id="split")
+            if NORMALIZE in extras:
+                with Horizontal(classes="extra-row", id="volume-row"):
+                    yield Label("Volume", classes="extra-label")
+                    with Horizontal(classes="extra-controls"):
+                        yield Toggle("Even out loudness", s.last_normalize, id="normalize")
             if IMAGE_TOOLS in extras:
-                with Horizontal(classes="extra-row", id="image-row"):
+                with Horizontal(classes="extra-row", id="size-row"):
                     yield Label("Max size", classes="extra-label")
-                    yield Input(placeholder="KB", id="max-kb", compact=True, type="integer")
-                    yield Checkbox("Remove EXIF and location", id="strip", compact=True)
+                    with Horizontal(classes="extra-controls"):
+                        yield Input(
+                            placeholder="no limit", id="max-kb", compact=True, type="integer"
+                        )
+                        yield Label("KB", classes="extra-unit")
+                with Horizontal(classes="extra-row", id="metadata-row"):
+                    yield Label("Metadata", classes="extra-label")
+                    with Horizontal(classes="extra-controls"):
+                        yield Toggle("Remove EXIF and location", id="strip")
 
     def _show_extras(self) -> None:
         """Only the extras that apply to the current tab."""
         if not self.options.extras:
             return
         kind = self.kind
-        for row, names in (
-            ("clip-row", (CLIP,)),
-            ("subs-row", (SUBTITLES,)),
-            ("sponsor-row", (SPONSORBLOCK,)),
-            ("audio-row", (CHAPTERS, NORMALIZE)),
-            ("image-row", (IMAGE_TOOLS,)),
+        for row, name in (
+            ("clip-row", CLIP),
+            ("subs-row", SUBTITLES),
+            ("sponsor-row", SPONSORBLOCK),
+            ("chapters-row", CHAPTERS),
+            ("volume-row", NORMALIZE),
+            ("size-row", IMAGE_TOOLS),
+            ("metadata-row", IMAGE_TOOLS),
         ):
             for widget in self.query(f"#{row}"):
-                widget.display = any(
-                    n in self.options.extras and kind in EXTRA_KINDS[n] for n in names
-                )
-        for widget in self.query("#normalize"):
-            widget.display = kind == "audio"
+                widget.display = kind in EXTRA_KINDS[name]
         subs_kind = "audio" if kind == "audio" else "video"
         if self.query("#subs") and getattr(self, "_subs_kind", "video") != subs_kind:
             # Audio can't hold subtitles, so its list has no "inside" choice.
@@ -312,15 +348,25 @@ class ConvertScreen(ModalScreen[Choice | None]):
             keep = keep if subs.value else ""
             subs.set_options(choices)
             subs.value = keep
+        self._sync_langs()
         self.query_one("#extras").display = any(w.display for w in self.query(".extra-row"))
+
+    def _sync_langs(self) -> None:
+        # Languages only matter with subtitles on; greyed out, the row still lines up.
+        if self.query("#subs"):
+            self.query_one("#sub-langs").disabled = not self.query_one("#subs", Select).value
 
     def _value(self, selector: str, default=None):
         found = self.query(selector)
         if not found:
             return default
         widget = found.first()
-        if not widget.display or not widget.parent.display:
-            return default
+        # Rows for another tab don't count. A folded section still does: it only hides them.
+        node = widget
+        while node is not None and node.id != "extras":
+            if node.has_class("extra-row") and not node.display:
+                return default
+            node = node.parent
         value = widget.value
         return default if value is Select.BLANK else value
 
@@ -392,12 +438,35 @@ class ConvertScreen(ModalScreen[Choice | None]):
             return None
         return Choice(kind, fmt, q, self.extras())
 
+    def _update_options_title(self, choice: Choice | None, problem: str = "") -> None:
+        if not self.options.extras:
+            return
+        if problem:
+            detail = Content.styled(problem, "$error")
+        elif choice and choice.extras.label:
+            detail = Content.styled(choice.extras.label, "$primary")
+        else:
+            offered = [
+                EXTRA_NAMES[name]
+                for name in EXTRA_NAMES
+                if name in self.options.extras and self.kind in EXTRA_KINDS[name]
+            ]
+            detail = Content.styled(", ".join(offered), "$text-muted")
+        self.query_one("#extras", Collapsible).title = Content.assemble("Options   ", detail)
+
+    def action_toggle_options(self) -> None:
+        if self.options.extras:
+            box = self.query_one("#extras", Collapsible)
+            box.collapsed = not box.collapsed
+
     def _update_summary(self) -> None:
         try:
             c = self.choice()
         except ValueError as exc:
             self.query_one("#summary", Static).update(f"[b $error]{escape(str(exc))}[/]")
+            self._update_options_title(None, str(exc))
             return
+        self._update_options_title(c)
         text = ""
         if c:
             text = f"[b]{escape(c.label)}[/b]  [dim]→ {escape(self.options.where)}[/dim]"
@@ -410,6 +479,7 @@ class ConvertScreen(ModalScreen[Choice | None]):
     @on(Select.Changed)
     @on(Checkbox.Changed)
     def _extras_changed(self) -> None:
+        self._sync_langs()
         self._update_summary()
 
     @on(OptionList.OptionHighlighted)
