@@ -23,7 +23,9 @@ from urllib.parse import unquote, urlparse
 from .options import (
     AUDIO_BITRATES,
     FRAME_RATES,
+    LOUDNORM,
     Choice,
+    Extras,
     gif_filter,
     image_sizes,
     video_qualities,
@@ -598,6 +600,8 @@ def _video_copy(info: FileInfo, choice: Choice) -> tuple[bool, bool]:
 def _audio_copy(info: FileInfo, choice: Choice) -> bool:
     a = info.audio
     target = AUDIO_TARGETS[choice.fmt]
+    if choice.extras.normalize:
+        return False  # a filter means re-encoding
     return bool(a) and choice.quality == "best" and _allows(target.copy, a.codec)
 
 
@@ -627,7 +631,7 @@ def build_ffmpeg_args(
 
     For frames, `out` is a folder; the frames go inside it as `<stem> 0001.png`...
     """
-    args = ["-hide_banner", "-nostdin", "-y", "-i", str(info.path)]
+    args = ["-hide_banner", "-nostdin", "-y", *clip_args(info, choice), "-i", str(info.path)]
     if choice.kind == "video":
         return [*args, *_video_args(info, choice, has_encoder), str(out)]
     if choice.kind == "audio":
@@ -638,6 +642,37 @@ def build_ffmpeg_args(
         name = f"{info.path.stem} %04d.{extension('image', choice.fmt)}"
         return [*args, *_frames_args(choice, has_encoder), str(out / name)]
     raise ValueError(f"Unknown kind: {choice.kind}")
+
+
+def clip_args(info: FileInfo, choice: Choice) -> list[str]:
+    """Input options that cut out the picked part. Before `-i`, ffmpeg jumps straight there;
+    a stream copy then starts at the keyframe before the start, a re-encode exactly on it."""
+    extras = choice.extras
+    if choice.kind == "image" or not extras.clipped or info.media == IMAGE:
+        return []
+    args = []
+    if extras.start:
+        args += ["-ss", _seconds(extras.start)]
+    if extras.end is not None:
+        args += ["-to", _seconds(extras.end)]
+    return args
+
+
+def clip_duration(info: FileInfo, choice: Choice) -> float | None:
+    """How long the result runs, for the progress bar."""
+    extras = choice.extras
+    if not extras.clipped or choice.kind == "image":
+        return info.duration
+    end = extras.end if extras.end is not None else info.duration
+    if end is None:
+        return None
+    if info.duration:
+        end = min(end, info.duration)
+    return max(end - (extras.start or 0), 0) or None
+
+
+def _seconds(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
 def _video_args(info: FileInfo, choice: Choice, has_encoder: HasEncoder) -> list[str]:
@@ -684,7 +719,77 @@ def _audio_args(info: FileInfo, choice: Choice, has_encoder: HasEncoder) -> list
     args = ["-vn", "-map", "0:a:0", "-map_metadata", "0"]
     if _audio_copy(info, choice):
         return [*args, "-c:a", "copy"]
+    if choice.extras.normalize:
+        args += ["-af", LOUDNORM, "-ar", str(_sample_rate(info) or 48000)]
     return [*args, *_audio_encode(AUDIO_TARGETS[choice.fmt], choice.quality, has_encoder)]
+
+
+def audio_format_for(path: Path) -> str | None:
+    """The AUDIO_TARGETS key that writes files like `path`, for re-encoding it in place."""
+    ext = path.suffix.lower().lstrip(".")
+    return ext if ext in AUDIO_TARGETS else None
+
+
+def refine_audio(
+    path: Path,
+    fmt: str,
+    ffmpeg_dir: str | None,
+    on_progress: Callable[[Progress], None],
+    cancel_event: threading.Event,
+    *,
+    start: float | None = None,
+    end: float | None = None,
+    normalize: bool = False,
+    label: str = "Finishing audio",
+) -> None:
+    """Cut and/or even out the volume of an audio file in place, keeping its tags and
+    cover art. Downloads use this: yt-dlp's own cut ignores the start of audio-only streams."""
+    from . import deps
+
+    def has_encoder(name: str) -> bool:
+        return deps.ffmpeg_has_encoder(ffmpeg_dir, name) if ffmpeg_dir else True
+
+    try:
+        probed = _ffprobe(path, ffmpeg_dir)
+    except LocalFileError:
+        probed = FileInfo(path, AUDIO, "", 0, None, None, None)
+    clip = Choice("audio", fmt, extras=Extras(start=start, end=end))
+    target = AUDIO_TARGETS.get(audio_format_for(path) or fmt) or AUDIO_TARGETS["mp3"]
+    out = path.with_name(f".finishing {path.name}")
+    timed = replace(probed, duration=clip_duration(probed, clip))
+    on_progress(Progress(CONVERTING, label, fraction=None))
+
+    def run(streams: list[str]) -> None:
+        args = ["-hide_banner", "-nostdin", "-y", *clip_args(probed, clip), "-i", str(path)]
+        args += [*streams, "-map_metadata", "0", "-c", "copy"]
+        if normalize:
+            # loudnorm works at 192 kHz and outputs that; go back to the file's own rate.
+            args += ["-af", LOUDNORM, "-ar", str(_sample_rate(probed) or 48000)]
+        args += [*_audio_encode(target, "best", has_encoder), str(out)]
+        _run_ffmpeg(timed, args, ffmpeg_dir, on_progress, cancel_event, False, label)
+
+    try:
+        try:
+            run(["-map", "0"])  # copy everything, cover art included; re-encode the sound
+        except LocalFileError:
+            if cancel_event.is_set():
+                raise
+            # Chapter tracks yt-dlp splits off can carry an empty cover stream ffmpeg
+            # refuses to copy; the sound is what matters.
+            run(["-map", "0:a"])
+        out.replace(path)
+    finally:
+        out.unlink(missing_ok=True)
+
+
+def _sample_rate(info: FileInfo) -> int | None:
+    for stream in (info.raw or {}).get("streams") or []:
+        if stream.get("codec_type") == "audio":
+            try:
+                return int(stream.get("sample_rate") or 0) or None
+            except ValueError:
+                return None
+    return None
 
 
 def _image_encode(fmt: str, has_encoder: HasEncoder) -> list[str]:
@@ -696,6 +801,8 @@ def _image_encode(fmt: str, has_encoder: HasEncoder) -> list[str]:
 
 def _image_args(choice: Choice, has_encoder: HasEncoder) -> list[str]:
     args = ["-map", "0:v:0", "-frames:v", "1", "-update", "1"]
+    if choice.extras.strip_metadata:
+        args += ["-map_metadata", "-1"]
     filters = []
     if choice.quality == "50":
         filters.append("scale=iw/2:-1")
@@ -758,7 +865,8 @@ def run_convert(
         args = build_ffmpeg_args(info, choice, out, has_encoder)
         fast = is_fast_copy(info, choice)
         on_progress(Progress(CONVERTING, "Copying" if fast else "Converting", fraction=None))
-        _run_ffmpeg(info, args, ffmpeg_dir, on_progress, cancel_event, fast)
+        timed = replace(info, duration=clip_duration(info, choice))
+        _run_ffmpeg(timed, args, ffmpeg_dir, on_progress, cancel_event, fast)
         if choice.kind == "frames" and not any(out.iterdir()):
             raise LocalFileError("ffmpeg finished but wrote no frames.")
         if not out.exists():
@@ -778,7 +886,8 @@ def _convert_image(info, choice, out, work, has_encoder, ffmpeg_dir, on_progress
     )
     # Cheap checks first, so a plain ffmpeg conversion never loads Pillow.
     by_pillow = choice.fmt in PILLOW_ONLY or (
-        (info.reader == "pillow" or not ffmpeg_can) and pillow_can_save(choice.fmt)
+        (info.reader == "pillow" or not ffmpeg_can or fits_size(choice))
+        and pillow_can_save(choice.fmt)
     )
     if by_pillow:
         source = info.path
@@ -816,6 +925,13 @@ PILLOW_SAVE_ARGS = {
 }
 # Formats that keep EXIF and a colour profile through Pillow.
 PILLOW_KEEPS_METADATA = {"JPEG", "WEBP", "PNG", "AVIF", "HEIF", "JXL", "TIFF"}
+# Formats with a quality setting, so "keep it under N KB" can be met by lowering it.
+SIZE_TARGET_FORMATS = ("jpg", "webp", "avif", "heic", "jxl")
+
+
+def fits_size(choice: Choice) -> bool:
+    """True when this image conversion aims for a file size, which Pillow does."""
+    return bool(choice.extras.max_kb) and choice.fmt in SIZE_TARGET_FORMATS
 
 
 @cache
@@ -883,9 +999,15 @@ def save_with_pillow(src: Path, choice: Choice, out: Path) -> None:
     im = _pillow_mode(im, name)
     kwargs = dict(PILLOW_SAVE_ARGS.get(name, {}))
     if name in PILLOW_KEEPS_METADATA:
-        for key in ("exif", "icc_profile"):
+        # The colour profile always stays: without it colours shift. EXIF (camera, GPS,
+        # dates) goes when asked; the picture was already turned upright above.
+        keys = ("icc_profile",) if choice.extras.strip_metadata else ("exif", "icc_profile")
+        for key in keys:
             if im.info.get(key):
                 kwargs[key] = im.info[key]
+    if fits_size(choice):
+        _save_under(im, name, kwargs, choice.extras.max_kb * 1024, out)
+        return
     try:
         im.save(out, name, **kwargs)
     except (TypeError, ValueError, OSError):
@@ -895,6 +1017,43 @@ def save_with_pillow(src: Path, choice: Choice, out: Path) -> None:
             im.save(out, name, **PILLOW_SAVE_ARGS.get(name, {}))
         except Exception as exc:
             raise LocalFileError(f"Couldn't write {choice.fmt.upper()}: {exc}") from exc
+
+
+def _save_under(im, name: str, kwargs: dict, limit: int, out: Path) -> None:
+    """Save at the highest quality that fits in `limit` bytes, shrinking the picture only if
+    even the lowest sensible quality is too big."""
+    import io
+
+    from PIL import Image
+
+    def encode(image, quality: int) -> bytes:
+        buf = io.BytesIO()
+        try:
+            image.save(buf, name, **{**kwargs, "quality": quality})
+        except (TypeError, ValueError, OSError):
+            buf = io.BytesIO()
+            image.save(buf, name, quality=quality)
+        return buf.getvalue()
+
+    best = b""
+    for _ in range(8):  # each pass shrinks the picture by 20%
+        low, high = 20, 95
+        while low <= high:  # the highest quality that fits, by halving
+            mid = (low + high) // 2
+            data = encode(im, mid)
+            if len(data) <= limit:
+                best, low = data, mid + 1
+            else:
+                high = mid - 1
+        if best:
+            break
+        width, height = im.size
+        if min(width, height) < 64:
+            break
+        im = im.resize((round(width * 0.8), round(height * 0.8)), Image.Resampling.LANCZOS)
+    if not best:
+        raise LocalFileError(f"Couldn't get this picture under {limit // 1024} KB.")
+    out.write_bytes(best)
 
 
 def _pillow_resize(im, quality: str):
@@ -928,10 +1087,10 @@ def _pillow_mode(im, name: str):
     return im.convert("RGBA" if has_alpha else "RGB")
 
 
-def _run_ffmpeg(info, args, ffmpeg_dir, on_progress, cancel_event, fast) -> None:
+def _run_ffmpeg(info, args, ffmpeg_dir, on_progress, cancel_event, fast, label=None) -> None:
     cmd = [_exe("ffmpeg", ffmpeg_dir), "-progress", "pipe:1", "-nostats", "-loglevel", "error"]
     cmd += args
-    label = "Copying" if fast else "Converting"
+    label = label or ("Copying" if fast else "Converting")
     # stderr goes to a file: a pipe nobody reads can fill up and stall ffmpeg.
     with tempfile.TemporaryFile(mode="w+") as err:
         try:

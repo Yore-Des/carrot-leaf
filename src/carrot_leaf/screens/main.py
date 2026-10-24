@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
-import sys
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -15,19 +14,22 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.color import Color
 from textual.containers import Horizontal, Vertical
-from textual.events import Paste, Resize
+from textual.events import AppBlur, AppFocus, Paste, Resize
 from textual.screen import Screen
 from textual.widgets import Button, ContentSwitcher, Input, Static
 
-from .. import config, logo
-from ..engine import errors, local, runner, update
-from ..engine.options import DOWNLOAD, Choice
-from ..engine.probe import VideoInfo, fetch_thumbnail, probe
+from .. import config, history, logo
+from ..engine import desktop, errors, local, runner, update
+from ..engine.desktop import reveal
+from ..engine.options import DOWNLOAD, Choice, safe_name
+from ..engine.probe import PlaylistInfo, VideoInfo, fetch_thumbnail, probe
 from ..engine.runner import Job, Progress
 from ..widgets.queue import DownloadQueue, JobRow, short_path, throttled
 from ..widgets.video_card import VideoCard
-from .convert import ConvertScreen, remembered
+from .convert import ConvertScreen, for_playlist, remembered
 from .files import FilesPane
+from .history import HistoryScreen, Redownload
+from .playlist import PlaylistScreen
 from .settings import CookiesScreen, SettingsScreen
 from .sites import SitesScreen
 
@@ -38,10 +40,15 @@ TABS = ((DOWNLOAD_TAB, "Download"), (FILES_TAB, "Convert files"))
 
 # Always shown, unlike Textual's Footer, which hides letter keys while the URL bar has focus.
 # Each label is clickable. "{url}" is esc (back to the URL bar) or, while typing in it, tab.
+# "{pick}" and "{paste}" show only when there's a playlist or a copied link to act on.
 KEY_LIST = (
+    ("{paste}", "", ""),
     ("d", "download", "screen.download"),
     ("c", "convert", "screen.convert"),
+    ("{pick}", "", ""),
     ("x", "cancel", "screen.cancel_download"),
+    ("p", "pause", "screen.pause"),
+    ("h", "history", "screen.history"),
     ("l", "sites", "screen.sites"),
     ("s", "settings", "screen.settings"),
     ("o", "open", "screen.reveal"),
@@ -51,12 +58,17 @@ KEY_LIST = (
     ("t", "themes", "app.change_theme"),
     ("q", "quit", "app.quit"),
 )
+PICK_KEY = ("e", "pick videos", "screen.pick")
+PASTE_KEY = ("v", "load copied link", "screen.paste_clipboard")
+# A system notification only for queues that took a while; short ones you watched finish.
+NOTIFY_AFTER = 20.0
 FILES_KEY_LIST = (
     ("c", "convert", "screen.convert"),
     ("f", "browse", "screen.browse"),
     ("r", "remove", "screen.remove_file"),
     ("x", "cancel", "screen.cancel_download"),
     ("o", "open", "screen.reveal"),
+    ("h", "history", "screen.history"),
     ("{url}", "", ""),
     ("ctrl+t", "download", "screen.switch_tab"),
     ("t", "themes", "app.change_theme"),
@@ -67,14 +79,31 @@ FILES_INPUT_KEY = ("esc", "file bar", "screen.focus_url")
 TAB_KEY = ("tab", "use keys", "screen.leave_url")
 
 
-def key_bar(typing: bool, tab: str = DOWNLOAD_TAB) -> str:
+def key_bar(
+    typing: bool,
+    tab: str = DOWNLOAD_TAB,
+    *,
+    playlist: bool = False,
+    clipboard: bool = False,
+    paused: bool = False,
+) -> str:
     key_list, input_key = (
         (FILES_KEY_LIST, FILES_INPUT_KEY) if tab == FILES_TAB else (KEY_LIST, URL_KEY)
     )
-    keys = [
-        (TAB_KEY if typing else input_key) if k == "{url}" else (k, label, action)
-        for k, label, action in key_list
-    ]
+    keys = []
+    for k, label, action in key_list:
+        if k == "{url}":
+            keys.append(TAB_KEY if typing else input_key)
+        elif k == "{pick}":
+            if playlist:
+                keys.append(PICK_KEY)
+        elif k == "{paste}":
+            if clipboard:
+                keys.append(PASTE_KEY)
+        elif k == "p":
+            keys.append((k, "resume" if paused else label, action))
+        else:
+            keys.append((k, label, action))
     return "  ".join(f"[b $primary]{k}[/] [@click={action}]{label}[/]" for k, label, action in keys)
 
 
@@ -112,6 +141,10 @@ class MainScreen(Screen):
         Binding("u", "update", "Update yt-dlp"),
         Binding("f", "browse", "Browse files"),
         Binding("r", "remove_file", "Remove file"),
+        Binding("e", "pick", "Pick videos"),
+        Binding("p", "pause", "Pause queue"),
+        Binding("h", "history", "History"),
+        Binding("v", "paste_clipboard", "Load copied link"),
         Binding("ctrl+t", "switch_tab", "Switch tab", priority=True),
         Binding("escape", "focus_url", "URL bar"),
         Binding("q", "app.quit", "Quit"),
@@ -121,12 +154,22 @@ class MainScreen(Screen):
         super().__init__()
         self.initial_url = initial_url
         self.info: VideoInfo | None = None
+        self.playlist: PlaylistInfo | None = None
+        self.picked: set[int] = set()  # indexes into playlist.entries
         self.loading_url: str | None = None
         self.last_url: str | None = None
         self.probe_token = 0
         self.jobs: list[Job] = []
-        self.running: Job | None = None
+        self.active: list[Job] = []  # running now; up to settings.parallel_downloads
+        self.paused = False  # no new downloads start; running ones finish
         self.last_file: str | None = None
+        # A link found on the clipboard, offered once with `v`.
+        self.clipboard_url: str | None = None
+        self.seen_clipboard: set[str] = set()
+        # True/False once the terminal reports focus; None for terminals that never do.
+        self.app_focused: bool | None = None
+        self.batch: list[Job] = []  # finished since the queue last went quiet
+        self.batch_started: float | None = None
         self.update_version: str | None = None
         self.getting_ffmpeg = False
         self.tab = DOWNLOAD_TAB
@@ -135,6 +178,11 @@ class MainScreen(Screen):
     @property
     def settings(self) -> config.Settings:
         return self.app.settings
+
+    @property
+    def running(self) -> Job | None:
+        """The oldest running download, if any."""
+        return self.active[0] if self.active else None
 
     def compose(self) -> ComposeResult:
         yield Static(id="logo")
@@ -166,6 +214,8 @@ class MainScreen(Screen):
         elif self.initial_url:
             url_input.value = self.initial_url
             self.load(self.initial_url)
+        else:
+            self.check_clipboard()
         self.check_for_update()
         self.prefetch_ffmpeg()
 
@@ -195,7 +245,15 @@ class MainScreen(Screen):
 
     def _render_keys(self) -> None:
         # Letters type into the URL bar while it has focus, so say how to reach the shortcuts.
-        self.query_one("#keys", Static).update(key_bar(isinstance(self.focused, Input), self.tab))
+        self.query_one("#keys", Static).update(
+            key_bar(
+                isinstance(self.focused, Input),
+                self.tab,
+                playlist=self.playlist is not None,
+                clipboard=self.clipboard_url is not None,
+                paused=self.paused,
+            )
+        )
 
     def _render_status(self) -> None:
         # Short, important bits first; the folder path goes last so it is what gets cut off.
@@ -212,6 +270,8 @@ class MainScreen(Screen):
             bits.append(f"[dim]yt-dlp[/dim] {update.installed_version()}")
         if self.getting_ffmpeg:
             bits.append("[dim]getting ffmpeg…[/dim]")
+        if self.paused:
+            bits.append("[b $warning]queue paused · press p[/]")
         if self.settings.cookies_browser:
             bits.append(f"[dim]cookies[/dim] {self.settings.cookies_browser}")
         if self.tab == FILES_TAB:
@@ -276,6 +336,12 @@ class MainScreen(Screen):
         url = raw if "://" in raw else "https://" + raw
         self.loading_url = url
         self.info = None
+        self.playlist = None
+        self.seen_clipboard.add(raw)
+        self.seen_clipboard.add(url)
+        if self.clipboard_url in (raw, url):
+            self.clipboard_url = None
+        self._render_keys()
         self.probe_token += 1
         self.query_one(VideoCard).show_loading(url)
         self._probe(url, self.probe_token)
@@ -292,11 +358,18 @@ class MainScreen(Screen):
         if image is not None:
             self.app.call_from_thread(self._thumb_done, token, image)
 
-    def _probe_done(self, token: int, info: VideoInfo) -> None:
+    def _probe_done(self, token: int, info: VideoInfo | PlaylistInfo) -> None:
         if token != self.probe_token:
             return
-        self.info = info
-        self.query_one(VideoCard).show_info(info)
+        card = self.query_one(VideoCard)
+        if isinstance(info, PlaylistInfo):
+            self.playlist = info
+            self.picked = set(range(len(info.entries)))
+            card.show_playlist(info, len(self.picked))
+        else:
+            self.info = info
+            card.show_info(info)
+        self._render_keys()
         self.query_one("#download", Button).focus()
 
     def _thumb_done(self, token: int, image) -> None:
@@ -355,14 +428,33 @@ class MainScreen(Screen):
     def action_download(self) -> None:
         if self.tab == FILES_TAB:
             self.app.bell()
+        elif self.playlist:
+            self.enqueue_playlist(self.playlist, DOWNLOAD)
         elif self.info:
             self.enqueue(self.info, DOWNLOAD)
         else:
             self.app.bell()
 
+    def action_pick(self) -> None:
+        if self.tab == FILES_TAB or not self.playlist:
+            self.app.bell()
+            return
+        playlist = self.playlist
+
+        def picked(chosen: set[int] | None) -> None:
+            if chosen is None or playlist is not self.playlist:
+                return
+            self.picked = chosen
+            self.query_one(VideoCard).update_picked(playlist, len(chosen))
+
+        self.app.push_screen(PlaylistScreen(playlist, self.picked), picked)
+
     def action_convert(self) -> None:
         if self.tab == FILES_TAB:
             self.files.convert()
+            return
+        if self.playlist:
+            self._convert_playlist(self.playlist)
             return
         if not self.info:
             self.app.bell()
@@ -377,12 +469,90 @@ class MainScreen(Screen):
 
         self.app.push_screen(ConvertScreen(info, self.settings), chosen)
 
+    def _convert_playlist(self, playlist: PlaylistInfo) -> None:
+        if not self.picked:
+            self.notify("No videos picked. Press e to pick some.", severity="warning")
+            return
+        where = short_path(str(self.settings.download_path / safe_name(playlist.title)))
+        youtube = playlist.extractor.lower().startswith("youtube")
+        options = for_playlist(playlist.title, len(self.picked), where, youtube)
+
+        def chosen(choice: Choice | None) -> None:
+            if choice is None:
+                return
+            self._remember(choice)
+            self.enqueue_playlist(playlist, choice)
+
+        self.app.push_screen(ConvertScreen(options, self.settings), chosen)
+
+    def action_pause(self) -> None:
+        if self.tab == FILES_TAB:
+            self.app.bell()
+            return
+        self.paused = not self.paused
+        self._render_status()
+        self._render_keys()
+        self._pump()
+        if self.paused:
+            self.notify("Running downloads finish; waiting ones hold until you press p.")
+
+    def action_history(self) -> None:
+        def closed(result: Redownload | None) -> None:
+            if isinstance(result, Redownload):
+                if self.tab != DOWNLOAD_TAB:
+                    self.action_show_tab(DOWNLOAD_TAB)
+                url = self.query_one("#url", Input)
+                url.value = result.url
+                self.load(result.url)
+
+        self.app.push_screen(HistoryScreen(), closed)
+
+    # ---------- clipboard ----------
+
+    def on_app_focus(self, _event: AppFocus) -> None:
+        self.app_focused = True
+        self.check_clipboard()
+
+    def on_app_blur(self, _event: AppBlur) -> None:
+        self.app_focused = False
+
+    @work(thread=True, exclusive=True, group="clipboard")
+    def check_clipboard(self) -> None:
+        if not self.settings.watch_clipboard:
+            return
+        text = desktop.read_clipboard()
+        if text and "\n" not in text and looks_like_url(text):
+            self.app.call_from_thread(self._clipboard_found, text)
+
+    def _clipboard_found(self, url: str) -> None:
+        if url in self.seen_clipboard or url == self.last_url:
+            return
+        self.seen_clipboard.add(url)
+        self.clipboard_url = url
+        self._render_keys()
+        self.notify(
+            f"{escape(url)}\n[dim]Press v to load it.[/dim]",
+            title="Link on your clipboard",
+            timeout=8,
+        )
+
+    def action_paste_clipboard(self) -> None:
+        url = self.clipboard_url
+        if not url:
+            self.app.bell()
+            return
+        self.clipboard_url = None
+        if self.tab != DOWNLOAD_TAB:
+            self.action_show_tab(DOWNLOAD_TAB)
+        self.query_one("#url", Input).value = url  # fires Input.Changed, which loads it
+
     def action_settings(self) -> None:
         def saved(new: config.Settings | None) -> None:
             if new is None:
                 return
             self.app.save_settings(new)
             self._render_status()
+            self._pump()  # more downloads may run at once now
             self.notify(f"Saving to {short_path(new.download_dir)}", title="Settings saved")
 
         self.app.push_screen(SettingsScreen(self.settings), saved)
@@ -496,9 +666,31 @@ class MainScreen(Screen):
 
     def enqueue(self, info: VideoInfo, choice: Choice) -> None:
         job = Job(url=info.url, title=info.title, choice=choice)
+        self._add_job(job)
+        self._pump()
+
+    def enqueue_playlist(self, playlist: PlaylistInfo, choice: Choice) -> None:
+        """One download per picked video, into a folder named after the playlist."""
+        picked = sorted(self.picked)
+        if not picked:
+            self.notify("No videos picked. Press e to pick some.", severity="warning")
+            return
+        template = self.settings.filename_template
+        if "{playlist}" not in template:
+            template = "{playlist}/" + template
+        width = max(2, len(str(len(playlist.entries))))
+        for i in picked:
+            entry = playlist.entries[i]
+            job = Job(url=entry.url, title=entry.title, choice=choice, template=template)
+            job.fields = {"playlist": safe_name(playlist.title), "index": f"{i + 1:0{width}}"}
+            self._add_job(job)
+        self._pump()
+
+    def _add_job(self, job: Job) -> None:
+        if not job.fields:
+            job.template = self.settings.filename_template
         self.jobs.append(job)
         self.query_one(DownloadQueue).add(job)
-        self._pump()
 
     def action_cancel_download(self) -> None:
         """Cancel the running download, or the next waiting one if nothing is running."""
@@ -529,11 +721,17 @@ class MainScreen(Screen):
     def _pump(self) -> None:
         queue = self.query_one(DownloadQueue)
         waiting = [j for j in self.jobs if j.state == runner.QUEUED]
-        if self.running is None and waiting:
-            self.running = waiting.pop(0)
-            self.running.state = runner.PREPARING
-            self._run_job(self.running, self.settings.download_path, self.settings.cookies_browser)
-        queue.update_title(1 if self.running else 0, len(waiting))
+        limit = max(1, min(self.settings.parallel_downloads, 4))
+        while not self.paused and waiting and len(self.active) < limit:
+            job = waiting.pop(0)
+            job.state, job.started = runner.PREPARING, time.monotonic()
+            if self.batch_started is None:
+                self.batch_started = job.started
+            self.active.append(job)
+            self._run_job(job, self.settings.download_path, self.settings.cookies_browser)
+        queue.update_title(len(self.active), len(waiting), paused=self.paused)
+        if not self.active and not waiting and self.batch:
+            self._batch_done()
 
     @work(thread=True, group="jobs")
     def _run_job(self, job: Job, download_dir: Path, cookies_browser: str) -> None:
@@ -560,23 +758,46 @@ class MainScreen(Screen):
         if exc is None:
             job.state, job.filepath = runner.DONE, path
             self.last_file = path
+            history.add(
+                history.Entry(
+                    title=job.title, path=path or "", label=job.choice.label, source=job.url
+                )
+            )
         elif job.cancelled:
             job.state = runner.CANCELLED
         else:
             job.state, job.error = runner.FAILED, exc
+        if job.state != runner.CANCELLED:
+            self.batch.append(job)
         self.query_one(DownloadQueue).refresh_job(job)
-        self.running = None
+        if job in self.active:
+            self.active.remove(job)
         self._pump()
 
+    def _batch_done(self) -> None:
+        """The queue went quiet: say so on the desktop, if Carrot isn't in front."""
+        batch, started = self.batch, self.batch_started
+        self.batch, self.batch_started = [], None
+        took = time.monotonic() - started if started else 0
+        if not self.settings.notify_when_done or self.app_focused is True:
+            return
+        if self.app_focused is None and took < NOTIFY_AFTER:
+            return  # can't tell where the user is; only bother them for long waits
+        title, message = batch_summary(batch)
+        desktop.notify(title, message)
 
-def reveal(path: str) -> None:
-    """Show a file in Finder / Explorer / the default file manager."""
-    try:
-        if sys.platform == "darwin":
-            subprocess.Popen(["open", "-R", path])
-        elif sys.platform == "win32":
-            subprocess.Popen(["explorer", "/select,", path])
-        else:
-            subprocess.Popen(["xdg-open", str(Path(path).parent)])
-    except OSError:
-        pass
+
+def batch_summary(jobs: list[Job]) -> tuple[str, str]:
+    done = [j for j in jobs if j.state == runner.DONE]
+    failed = len(jobs) - len(done)
+    if len(jobs) == 1:
+        job = jobs[0]
+        return ("Downloaded" if done else "Download failed", job.title)
+    title = f"{len(done)} download{'s' if len(done) != 1 else ''} finished"
+    message = f"{failed} didn't work." if failed else ", ".join(j.title for j in done[:3])
+    if not failed and len(done) > 3:
+        message += f" and {len(done) - 3} more"
+    return title, message
+
+
+__all__ = ["MainScreen", "reveal"]

@@ -8,8 +8,8 @@
 </pre>
 
 Carrot downloads and converts videos in your terminal. Paste a link from YouTube or
-any of the 1,300+ sites yt-dlp knows, then press `d` to save it as MP4 or `c` to pick a
-format. It also converts files already on your computer: drop in videos, songs or
+any of the 1,300+ sites yt-dlp knows, a whole playlist or channel included, then press
+`d` to save it as MP4 or `c` to pick a format, cut a clip, add subtitles or skip sponsors. It also converts files already on your computer: drop in videos, songs or
 photos and turn them into any of 51 formats. It runs on
 [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://ffmpeg.org) and
 [Textual](https://textual.textualize.io/).
@@ -47,6 +47,8 @@ carrot setup                  # optional: download ffmpeg now instead of on firs
 carrot                 # open the app
 carrot <url>           # open with a link already loaded
 carrot <file>          # open Convert files with that file in it
+carrot get <url>       # download without opening the app (see below)
+carrot convert <file> --format webp   # convert without opening the app
 carrot setup           # download ffmpeg, and list the formats it can make
 carrot update          # update yt-dlp
 carrot --version
@@ -58,8 +60,12 @@ lists every key:
 | Key   | Does                                                       |
 | ----- | ---------------------------------------------------------- |
 | `d`   | Download at the best quality, as MP4                       |
-| `c`   | Convert: pick a video or audio format and a quality        |
+| `c`   | Convert: pick a format and quality, plus a clip, subtitles and more |
+| `e`   | Pick which videos of a playlist or channel to get          |
+| `v`   | Load the link Carrot found on your clipboard               |
 | `x`   | Cancel the current download (or use a row's cancel button)   |
+| `p`   | Pause the queue: running downloads finish, waiting ones hold |
+| `h`   | History: open, find, copy the link of or re-get anything saved |
 | `l`   | List supported sites. Search by name, or paste a link to check it |
 | `s`   | Settings: download folder and browser cookies              |
 | `t`   | Pick a theme                                               |
@@ -74,7 +80,37 @@ While the URL bar has focus, letters go into the link. Press `tab` first, or cli
 in the bottom bar.
 
 You can paste the next link while a download runs. Downloads queue up and run one at a
-time.
+time, or up to four at once if you pick that in Settings (`s`). When Carrot is in the
+background and the queue finishes, you get a system notification.
+
+Copy a link anywhere, switch back to Carrot, and it offers that link: press `v` to load
+it. Turn that off in Settings if you'd rather it didn't look.
+
+### Playlists and channels
+
+Paste a playlist or channel link and the card lists how many videos it has. `d` downloads
+them all, `c` picks a format for all of them, and `e` opens a list where you tick the ones
+you want (`a` all, `n` none, or type a number to keep the first N, which on a channel are
+the newest). Up to 500 are listed. They land in a folder named after the playlist,
+numbered in playlist order when your file name uses `{index}`.
+
+### Extras in the Convert dialog
+
+Under the format and quality lists, depending on the video:
+
+- **Clip**: a start and end time (`1:30`, `90` or `1m30s`) to keep only that part. Video
+  clips are cut while downloading, so you don't fetch the whole thing; a clip that isn't
+  re-encoded starts at the nearest keyframe.
+- **Subtitles**: inside the video (MP4, MKV, WebM) or as a separate `.srt`, in the
+  languages you list (`en`, `en,de`). YouTube's automatic captions count.
+- **SponsorBlock** (YouTube): cut sponsor, self-promotion and "like and subscribe" segments
+  out, or keep them and mark them as chapters. The segments come from
+  [SponsorBlock](https://sponsor.ajay.app)'s community list.
+- **One file per chapter**: a video with chapters, an album upload say, becomes a folder
+  of numbered tracks.
+- **Even out the volume** (audio): normalises loudness to the -16 LUFS podcasts use.
+
+The dialog remembers your subtitle, SponsorBlock and volume picks for next time.
 
 ### Formats
 
@@ -100,7 +136,10 @@ at once, and mix videos, audio and photos. Dropping a file on the Download tab a
 switches to Convert files.
 
 Press `c` to pick a format. The tabs depend on what you added: Video, Audio, Image, and
-Frames, which saves a video as a folder of pictures. With a mixed batch, the dialog says
+Frames, which saves a video as a folder of pictures. Videos and songs can be clipped and
+songs evened out, as above. For images you can set a **max size** in KB (JPG, WebP, AVIF,
+HEIC and JPEG XL lower their quality until the file fits) and **remove EXIF and
+location** data before you share a photo. With a mixed batch, the dialog says
 how many of the files each pick applies to. `r` removes the highlighted file, `x` cancels
 a conversion, and conversions run alongside downloads.
 
@@ -115,14 +154,41 @@ takes seconds and loses nothing. The dialog says which one you're getting.
 ### Where files go
 
 Downloads land in your Downloads folder as `Title [video-id].ext`. Press `s` to pick
-another folder. If a file with that name already exists, the new one becomes
-`Title [video-id] (2).ext`.
+another folder, or to change how files are named: write a template from `{title}`,
+`{id}`, `{channel}`, `{uploader}`, `{date}`, `{year}`, `{site}`, `{height}`, `{playlist}`
+and `{index}`, with `/` for folders. `{channel}/{date} {title}` files each video under its
+channel. Settings shows an example name as you type. If a file with that name already
+exists, the new one becomes `Title [video-id] (2).ext`.
+
+Everything you download or convert goes into your history (`h`), kept next to the
+settings file as `history.jsonl`. From there, Enter opens a file, `o` shows it in its
+folder, `r` loads the link again so you can get it in another format, `y` copies the link,
+and Delete forgets an entry (the file stays).
 
 Settings, including your theme, live in:
 
 - macOS: `~/Library/Application Support/carrot-leaf/config.toml`
 - Linux: `~/.config/carrot-leaf/config.toml`
 - Windows: `%LOCALAPPDATA%\carrot-leaf\config.toml`
+
+### Without the app
+
+`carrot get` and `carrot convert` do the same work from a script or a shell. Progress goes
+to stderr and each saved path to stdout, so the result can feed another command:
+
+```sh
+carrot get https://youtu.be/aqz-KE-bpKQ                       # best MP4
+carrot get URL --format mp3 --quality 320 --normalize
+carrot get URL --start 1:30 --end 2:00 --format gif --quality 360
+carrot get URL --subs srt --sub-langs en,de --sponsorblock remove
+carrot get PLAYLIST_URL --format m4a --latest 10 --name '{index} - {title}'
+carrot convert clip.mov --format mp4
+carrot convert *.heic --format jpg --max-kb 500 --strip-metadata
+mpv "$(carrot get URL --quiet)"
+```
+
+Run `carrot get --help` or `carrot convert --help` for every option. Settings you made in
+the app (folder, file names, cookies) apply here too.
 
 ### Themes
 

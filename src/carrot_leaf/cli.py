@@ -1,5 +1,5 @@
-"""Command-line entry point: `carrot [URL or FILE]`, `carrot setup`, `carrot update`,
-`carrot --version`."""
+"""Command-line entry point: `carrot [URL or FILE]`, `carrot get`, `carrot convert`,
+`carrot setup`, `carrot update`, `carrot --version`."""
 
 from __future__ import annotations
 
@@ -15,11 +15,19 @@ def main(argv: list[str] | None = None) -> int:
         return _update()
     if argv[:1] == ["setup"]:
         return _setup()
+    if argv[:1] in (["get"], ["convert"]):
+        from . import batch
+
+        return batch.main(argv)
 
     parser = argparse.ArgumentParser(
         prog="carrot",
         description="Download or convert videos from YouTube and 1,300+ other sites.",
-        epilog="Run `carrot setup` to download ffmpeg now, `carrot update` to update yt-dlp.",
+        epilog=(
+            "Without the app: `carrot get URL --format mp3` downloads, `carrot convert FILE "
+            "--format webp` converts (see `carrot get --help`). `carrot setup` downloads "
+            "ffmpeg now, `carrot update` updates yt-dlp."
+        ),
     )
     parser.add_argument(
         "url", nargs="?", default="", help="video link (or file to convert) to open straight away"

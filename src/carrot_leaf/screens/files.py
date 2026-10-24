@@ -15,12 +15,13 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Input, OptionList, Static
 from textual.widgets.option_list import Option
 
+from .. import history
 from ..engine import deps, errors, local, runner
 from ..engine.local import ANIMATED, AUDIO, IMAGE, FileInfo
 from ..engine.options import Choice
 from ..engine.runner import Job, Progress
 from ..widgets.queue import DownloadQueue, JobRow, human_size, short_path, throttled
-from .convert import ConvertOptions, ConvertScreen, remembered
+from .convert import CLIP, IMAGE_TOOLS, NORMALIZE, ConvertOptions, ConvertScreen, remembered
 
 KIND_ORDER = ("video", "audio", "image", "frames")
 EMPTY_HINT = (
@@ -281,6 +282,14 @@ class FilesPane(Vertical):
                 bits.append("Re-encodes, which can take a while.")
             return " ".join(bits)
 
+        extras = set()
+        if any(f.duration for f in files if f.media != IMAGE):
+            extras.add(CLIP)
+        if "audio" in kinds:
+            extras.add(NORMALIZE)
+        if "image" in kinds:
+            extras.add(IMAGE_TOOLS)
+        durations = [f.duration for f in files if f.duration]
         folders = {f.path.parent for f in files}
         where = short_path(str(folders.pop())) if len(folders) == 1 else "next to each original"
         title = files[0].path.name if len(files) == 1 else f"{len(files)} files"
@@ -295,6 +304,9 @@ class FilesPane(Vertical):
             action="convert",
             local=True,
             note=note,
+            extras=frozenset(extras),
+            # Check a clip against the shortest file, so it fits every one in the batch.
+            duration=min(durations) if durations else None,
         )
 
     def convert(self) -> None:
@@ -380,6 +392,15 @@ class FilesPane(Vertical):
         if exc is None:
             job.state, job.filepath = runner.DONE, path
             self.last_file = path
+            history.add(
+                history.Entry(
+                    title=job.title,
+                    path=path or "",
+                    label=job.choice.label,
+                    source=job.url,
+                    kind="convert",
+                )
+            )
         elif job.cancelled:
             job.state = runner.CANCELLED
         else:

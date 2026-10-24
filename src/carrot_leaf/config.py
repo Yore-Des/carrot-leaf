@@ -41,6 +41,18 @@ class Settings:
     # Browser cookies stay off until the user opts in for a login-only video.
     cookies_browser: str = ""
     theme: str = "carrot"
+    # How downloads are named, as `{field}` text; see options.TEMPLATE_FIELDS.
+    filename_template: str = "{title} [{id}]"
+    parallel_downloads: int = 1
+    # Offer a link found on the clipboard when the window comes back into focus.
+    watch_clipboard: bool = True
+    # A system notification when the queue finishes while Carrot is in the background.
+    notify_when_done: bool = True
+    # Extras the Convert dialog remembers between videos.
+    last_subtitles: str = ""
+    last_sub_langs: str = "en"
+    last_sponsorblock: str = ""
+    last_normalize: bool = False
 
     def __post_init__(self) -> None:
         if not self.download_dir:
@@ -57,8 +69,16 @@ def load(path: Path | None = None) -> Settings:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
         return Settings()
-    known = {f.name for f in fields(Settings)}
-    return Settings(**{k: v for k, v in data.items() if k in known and isinstance(v, str)})
+    # Keep only known keys holding the right type, so a hand-edited file can't crash startup.
+    defaults = Settings(download_dir="-")
+    types = {f.name: type(getattr(defaults, f.name)) for f in fields(Settings)}
+    return Settings(
+        **{
+            k: v
+            for k, v in data.items()
+            if k in types and type(v) is types[k]  # `type is`: True isn't an int setting
+        }
+    )
 
 
 def save(settings: Settings, path: Path | None = None) -> None:

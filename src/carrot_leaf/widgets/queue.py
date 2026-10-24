@@ -245,10 +245,12 @@ class DownloadQueue(VerticalScroll):
         if row := self._rows.get(job.id):
             row.refresh_job()
 
-    def update_title(self, running: int, queued: int) -> None:
+    def update_title(self, running: int, queued: int, paused: bool = False) -> None:
         bits = []
         if running:
-            bits.append(f"1 {self.busy}")
+            bits.append(f"{running} {self.busy}")
         if queued:
             bits.append(f"{queued} waiting")
+        if paused and queued:
+            bits.append("paused")
         self.border_title = self.queue_title + (f" · {', '.join(bits)}" if bits else "")

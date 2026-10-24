@@ -1,19 +1,32 @@
-"""Settings: download folder and browser cookies."""
+"""Settings: download folder, file names, the queue, browser cookies and desktop extras."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
 
+from rich.markup import escape
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, DirectoryTree, Input, Label, OptionList, Select, Static
+from textual.widgets import (
+    Button,
+    Checkbox,
+    DirectoryTree,
+    Input,
+    Label,
+    OptionList,
+    Select,
+    Static,
+)
 from textual.widgets.option_list import Option
 
 from ..config import Settings
+from ..engine.options import TEMPLATE_FIELDS, template_error, template_preview
+
+PARALLEL = [("One at a time", 1), ("2 at once", 2), ("3 at once", 3), ("4 at once", 4)]
 
 BROWSERS = [
     ("Chrome", "chrome"),
@@ -55,6 +68,32 @@ class SettingsScreen(ModalScreen[Settings | None]):
                 yield Button("browse", id="browse")
             yield FolderTree(Path.home(), id="tree")
             yield Static(id="folder-error")
+            yield Label("Name downloads", classes="field-label")
+            yield Input(self.settings.filename_template, id="template")
+            yield Static(id="template-preview")
+            with Horizontal(classes="settings-row"):
+                yield Label("Downloads run", classes="extra-label")
+                yield Select(
+                    PARALLEL,
+                    value=self.settings.parallel_downloads
+                    if self.settings.parallel_downloads in (1, 2, 3, 4)
+                    else 1,
+                    allow_blank=False,
+                    compact=True,
+                    id="parallel",
+                )
+            yield Checkbox(
+                "Offer links I copy when I come back to Carrot",
+                self.settings.watch_clipboard,
+                id="watch-clipboard",
+                compact=True,
+            )
+            yield Checkbox(
+                "Notify me when downloads finish in the background",
+                self.settings.notify_when_done,
+                id="notify",
+                compact=True,
+            )
             yield Label(
                 "Browser cookies (for age-restricted or members-only videos)", classes="field-label"
             )
@@ -76,6 +115,22 @@ class SettingsScreen(ModalScreen[Settings | None]):
     def on_mount(self) -> None:
         self.query_one("#tree").display = False
         self.query_one("#folder", Input).focus()
+        self._preview(self.settings.filename_template)
+
+    @on(Input.Changed, "#template")
+    def _template_changed(self, event: Input.Changed) -> None:
+        self._preview(event.value)
+
+    def _preview(self, template: str) -> None:
+        out = self.query_one("#template-preview", Static)
+        if problem := template_error(template):
+            out.update(f"[$error]{escape(problem)}[/]")
+            return
+        fields = " ".join(f"{{{f}}}" for f in TEMPLATE_FIELDS)
+        out.update(
+            f"[dim]→[/dim] {escape(template_preview(template))}\n"
+            f"[dim]{escape(fields)}  · use / for folders[/dim]"
+        )
 
     @on(Button.Pressed, "#browse")
     def _browse(self) -> None:
@@ -89,6 +144,7 @@ class SettingsScreen(ModalScreen[Settings | None]):
         self.query_one("#folder", Input).value = str(event.path)
 
     @on(Input.Submitted, "#folder")
+    @on(Input.Submitted, "#template")
     @on(Button.Pressed, "#save")
     def action_save(self) -> None:
         raw = self.query_one("#folder", Input).value.strip()
@@ -102,12 +158,21 @@ class SettingsScreen(ModalScreen[Settings | None]):
         except OSError as exc:
             error.update(f"[$error]Can't use that folder: {exc.strerror or exc}[/]")
             return
+        template = self.query_one("#template", Input).value.strip()
+        if template_error(template):
+            self.query_one("#template", Input).focus()
+            return
         cookies = self.query_one("#cookies", Select).value
+        parallel = self.query_one("#parallel", Select).value
         self.dismiss(
             replace(
                 self.settings,
                 download_dir=str(path),
                 cookies_browser=cookies if isinstance(cookies, str) else "",
+                filename_template=template,
+                parallel_downloads=parallel if isinstance(parallel, int) else 1,
+                watch_clipboard=self.query_one("#watch-clipboard", Checkbox).value,
+                notify_when_done=self.query_one("#notify", Checkbox).value,
             )
         )
 

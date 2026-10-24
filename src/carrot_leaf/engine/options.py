@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import os
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 VIDEO_FORMATS = ("mp4", "mkv", "webm", "mov", "gif")
 AUDIO_FORMATS = ("mp3", "m4a", "opus", "flac", "wav", "ogg")
@@ -35,7 +37,88 @@ VIDEO_SORT = {
 # Containers whose "best" prefers H.264 so nothing has to be re-encoded to play everywhere.
 H264_FIRST = ("mp4", "mov")
 
+# Filenames: people write `{title} [{id}]`; yt-dlp wants `%(title)s [%(id)s]`.
+DEFAULT_TEMPLATE = "{title} [{id}]"
+TEMPLATE_FIELDS = {
+    "title": "%(title).180B",
+    "id": "%(id)s",
+    "channel": "%(channel,uploader|Unknown)s",
+    "uploader": "%(uploader,channel|Unknown)s",
+    "date": "%(upload_date>%Y-%m-%d|)s",
+    "year": "%(upload_date>%Y|)s",
+    "site": "%(extractor_key)s",
+    "height": "%(height|)sp",
+    # Filled in by Carrot for playlist downloads, which fetch each video on its own.
+    "playlist": "",
+    "index": "",
+}
+TEMPLATE_SAMPLE = {
+    "title": "Big Buck Bunny",
+    "id": "aqz-KE-bpKQ",
+    "channel": "Blender",
+    "uploader": "Blender",
+    "date": "2014-11-10",
+    "year": "2014",
+    "site": "Youtube",
+    "height": "1080p",
+    "playlist": "Open Movies",
+    "index": "03",
+}
+_FIELD = re.compile(r"\{(\w+)\}")
 OUTPUT_TEMPLATE = "%(title).180B [%(id)s].%(ext)s"
+
+# SponsorBlock: what "remove" cuts out; "mark" turns every kind into a chapter instead.
+SPONSOR_REMOVE = ("sponsor", "selfpromo", "interaction")
+SPONSOR_MARK = ("sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "filler")
+# Containers yt-dlp can put subtitles inside; anything else gets a .srt next to it.
+SUBTITLE_EMBED_EXTS = ("mp4", "mkv", "webm")
+# Even out loudness to the -16 LUFS podcasts and streaming services use.
+LOUDNORM = "loudnorm=I=-16:TP=-1.5:LRA=11"
+
+
+@dataclass(frozen=True)
+class Extras:
+    """Everything past format and quality. The defaults change nothing."""
+
+    start: float | None = None  # clip, in seconds
+    end: float | None = None
+    subtitles: str = ""  # "", "embed" or "srt"
+    sub_langs: str = "en"  # yt-dlp language list, comma separated: "en,de" or "en.*"
+    sponsorblock: str = ""  # "", "remove" or "mark"
+    split_chapters: bool = False
+    normalize: bool = False  # even out the volume (audio)
+    strip_metadata: bool = False  # images: drop EXIF, GPS and camera details
+    max_kb: int | None = None  # images: lower the quality until the file fits
+
+    @property
+    def clipped(self) -> bool:
+        return self.start is not None or self.end is not None
+
+    @property
+    def label(self) -> str:
+        bits = []
+        if self.clipped:
+            bits.append(
+                f"{time_text(self.start or 0)}–{time_text(self.end) if self.end else 'end'}"
+            )
+        if self.subtitles:
+            bits.append("subs" if self.subtitles == "embed" else "+srt")
+        if self.sponsorblock == "remove":
+            bits.append("no sponsors")
+        elif self.sponsorblock == "mark":
+            bits.append("sponsor chapters")
+        if self.split_chapters:
+            bits.append("by chapter")
+        if self.normalize:
+            bits.append("even volume")
+        if self.strip_metadata:
+            bits.append("no metadata")
+        if self.max_kb:
+            bits.append(f"≤{self.max_kb} KB")
+        return " · ".join(bits)
+
+
+NO_EXTRAS = Extras()
 
 
 @dataclass(frozen=True)
@@ -45,9 +128,15 @@ class Choice:
     # "best", a height like "1080", a bitrate like "320", an image size like "1920" or "50"
     # (percent), or a frame rate like "1".
     quality: str = "best"
+    extras: Extras = field(default=NO_EXTRAS)
 
     @property
     def label(self) -> str:
+        extra = self.extras.label
+        return f"{self.base_label} · {extra}" if extra else self.base_label
+
+    @property
+    def base_label(self) -> str:
         if self.kind == "frames":
             return (
                 f"{self.fmt.upper()} frames · {FRAME_RATE_LABELS.get(self.quality, self.quality)}"
@@ -69,6 +158,94 @@ class Choice:
 
 
 DOWNLOAD = Choice("video", "mp4", "best")
+
+
+def parse_time(text: str) -> float | None:
+    """`90`, `1:30`, `1:02:03`, `1m30s` or `1:30.5` as seconds; None when blank.
+
+    Raises ValueError for anything else.
+    """
+    text = text.strip().lower()
+    if not text:
+        return None
+    if m := re.fullmatch(r"(?:(\d+)h)?\s*(?:(\d+)m)?\s*(?:(\d+(?:\.\d+)?)s)?", text):
+        if any(m.groups()):
+            h, mins, secs = (float(g) if g else 0.0 for g in m.groups())
+            return h * 3600 + mins * 60 + secs
+    parts = text.split(":")
+    if len(parts) > 3 or not all(re.fullmatch(r"\d+(\.\d+)?", p) for p in parts):
+        raise ValueError(f"Can't read {text!r} as a time. Try 1:30 or 90.")
+    seconds = 0.0
+    for part in parts:
+        seconds = seconds * 60 + float(part)
+    return seconds
+
+
+def time_text(seconds: float | None) -> str:
+    if seconds is None or math.isinf(seconds):
+        return "end"
+    whole = int(seconds)
+    h, rem = divmod(whole, 3600)
+    m, s = divmod(rem, 60)
+    text = f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
+    if frac := round(seconds - whole, 1):
+        text += f"{frac:.1f}"[1:]
+    return text
+
+
+def check_clip(start: float | None, end: float | None, duration: float | None) -> str:
+    """Why this clip can't work, or "" when it can."""
+    if start is not None and end is not None and end <= start:
+        return "The end has to come after the start."
+    if duration and start is not None and start >= duration:
+        return f"The video is only {time_text(duration)} long."
+    return ""
+
+
+def template_error(template: str) -> str:
+    """What's wrong with a filename template, or "" when it's fine."""
+    if not template.strip():
+        return "The name can't be empty."
+    unknown = [f for f in _FIELD.findall(template) if f not in TEMPLATE_FIELDS]
+    if unknown:
+        return f"Unknown field {{{unknown[0]}}}. Use " + ", ".join(
+            f"{{{f}}}" for f in TEMPLATE_FIELDS
+        )
+    if template.strip().startswith(("/", "\\")) or ".." in template.replace("\\", "/").split("/"):
+        return "Keep the name inside the download folder."
+    return ""
+
+
+def safe_name(name: str) -> str:
+    """A folder name that works on every system."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip(" .")
+    return cleaned[:120] or "Playlist"
+
+
+def template_preview(template: str, ext: str = "mp4") -> str:
+    name = _FIELD.sub(lambda m: TEMPLATE_SAMPLE.get(m.group(1), m.group(0)), template)
+    return f"{name.strip()}.{ext}"
+
+
+def to_outtmpl(template: str, fields: dict[str, str] | None = None) -> str:
+    """A yt-dlp output template from `{field}` text. `fields` fills in literal values
+    (playlist name and position) that yt-dlp doesn't know when it fetches one video."""
+    fields = fields or {}
+    out = []
+    pos = 0
+    for m in _FIELD.finditer(template):
+        out.append(template[pos : m.start()].replace("%", "%%"))
+        name = m.group(1)
+        if name in fields:
+            out.append(fields[name].replace("%", "%%"))
+        else:
+            out.append(TEMPLATE_FIELDS.get(name, ""))
+        pos = m.end()
+    out.append(template[pos:].replace("%", "%%"))
+    text = "".join(out).strip().replace("\\", "/")
+    # Empty fields leave stray separators: "/ - Title" or "a//b".
+    parts = [p.strip(" -_.") or "_" for p in text.split("/")]
+    return "/".join(parts) + ".%(ext)s"
 
 
 def video_qualities(fmt: str, max_height: int | None) -> list[str]:
@@ -108,9 +285,12 @@ def build_options(
     js_runtimes: dict | None = None,
     cookies_browser: str = "",
     native_vorbis: bool = False,
+    template: str = DEFAULT_TEMPLATE,
+    fields: dict[str, str] | None = None,
 ) -> dict:
+    outtmpl = to_outtmpl(template, fields) if template != DEFAULT_TEMPLATE else OUTPUT_TEMPLATE
     opts: dict = {
-        "outtmpl": {"default": os.path.join(download_dir, OUTPUT_TEMPLATE)},
+        "outtmpl": {"default": os.path.join(download_dir, outtmpl)},
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
@@ -127,6 +307,17 @@ def build_options(
         opts["cookiesfrombrowser"] = (cookies_browser,)
 
     pps = opts["postprocessors"]
+    extras = choice.extras
+    # Audio is cut after the download (runner.py): yt-dlp's cut ignores the start there.
+    if extras.clipped and choice.kind != "audio":
+        from yt_dlp.utils import download_range_func  # only when a clip is asked for
+
+        opts["download_ranges"] = download_range_func(
+            None, [(extras.start or 0, extras.end if extras.end is not None else math.inf)]
+        )
+    if extras.sponsorblock:
+        cats = SPONSOR_REMOVE if extras.sponsorblock == "remove" else SPONSOR_MARK
+        pps.append({"key": "SponsorBlock", "categories": list(cats), "when": "after_filter"})
     if choice.kind == "audio":
         _audio(choice, opts, pps)
         if choice.fmt == "ogg" and native_vorbis:
@@ -140,6 +331,18 @@ def build_options(
         _video(choice, opts, pps)
         final_ext = choice.fmt
 
+    _subtitles(extras, final_ext, opts, pps)
+    if extras.sponsorblock and final_ext != "gif":
+        # Must run before FFmpegMetadata, which writes the chapters it leaves.
+        pps.append(
+            {
+                "key": "ModifyChapters",
+                "remove_sponsor_segments": list(SPONSOR_REMOVE)
+                if extras.sponsorblock == "remove"
+                else [],
+                "sponsorblock_chapter_title": "[SponsorBlock]: %(category_names)l",
+            }
+        )
     if final_ext != "gif":
         pps.append({"key": "FFmpegMetadata", "add_metadata": True, "add_chapters": True})
     if final_ext in THUMBNAIL_EXTS:
@@ -147,7 +350,28 @@ def build_options(
         # mp4/m4a/mp3 can't hold webp art, so normalise thumbnails to jpg first.
         pps.insert(0, {"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
         pps.append({"key": "EmbedThumbnail", "already_have_thumbnail": False})
+    if extras.split_chapters and final_ext != "gif":
+        # One file per chapter, in a folder named after the video. runner.py keeps the
+        # folder and drops the whole file when there were chapters to split.
+        stem = outtmpl.rsplit(".%(ext)s", 1)[0]
+        opts["outtmpl"]["chapter"] = os.path.join(
+            download_dir, stem, "%(section_number)02d - %(section_title).150B.%(ext)s"
+        )
+        pps.append({"key": "FFmpegSplitChapters", "force_keyframes": False})
     return opts
+
+
+def _subtitles(extras: Extras, final_ext: str, opts: dict, pps: list) -> None:
+    if not extras.subtitles or final_ext == "gif":
+        return
+    opts["writesubtitles"] = True
+    opts["writeautomaticsub"] = True  # most videos only have YouTube's automatic captions
+    opts["subtitleslangs"] = [lang.strip() for lang in extras.sub_langs.split(",") if lang.strip()]
+    if extras.subtitles == "embed" and final_ext in SUBTITLE_EMBED_EXTS:
+        pps.append({"key": "FFmpegEmbedSubtitle", "already_have_subtitle": False})
+    else:
+        opts["subtitlesformat"] = "srt/vtt/best"
+        pps.insert(0, {"key": "FFmpegSubtitlesConvertor", "format": "srt", "when": "before_dl"})
 
 
 def _video(choice: Choice, opts: dict, pps: list) -> None:

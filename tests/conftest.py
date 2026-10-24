@@ -10,4 +10,6 @@ def isolated_config(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "default_download_dir", lambda: str(tmp_path / "downloads"))
     monkeypatch.setenv("CARROT_NO_UPDATE_CHECK", "1")
     monkeypatch.setenv("CARROT_NO_FFMPEG_FETCH", "1")
+    monkeypatch.setenv("CARROT_NO_CLIPBOARD", "1")
+    monkeypatch.setenv("CARROT_NO_NOTIFY", "1")
     return tmp_path

@@ -11,7 +11,17 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, OptionList, Static, TabbedContent, TabPane
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Input,
+    Label,
+    OptionList,
+    Select,
+    Static,
+    TabbedContent,
+    TabPane,
+)
 from textual.widgets.option_list import Option
 
 from ..config import Settings
@@ -19,14 +29,42 @@ from ..engine.options import (
     AUDIO_FORMATS,
     FRAME_RATE_LABELS,
     H264_FIRST,
+    SUBTITLE_EMBED_EXTS,
     VIDEO_FORMATS,
     Choice,
+    Extras,
     audio_qualities,
+    check_clip,
+    parse_time,
+    time_text,
     video_qualities,
 )
 from ..engine.probe import VideoInfo
 
 TAB_NAMES = {"video": "Video", "audio": "Audio", "image": "Image", "frames": "Frames"}
+
+# Extras a source can offer, and the tabs each one shows on.
+CLIP, SUBTITLES, SPONSORBLOCK, CHAPTERS, NORMALIZE, IMAGE_TOOLS = (
+    "clip",
+    "subtitles",
+    "sponsorblock",
+    "chapters",
+    "normalize",
+    "image",
+)
+EXTRA_KINDS = {
+    CLIP: ("video", "audio", "frames"),
+    SUBTITLES: ("video", "audio"),
+    SPONSORBLOCK: ("video", "audio"),
+    CHAPTERS: ("video", "audio"),
+    NORMALIZE: ("audio",),
+    IMAGE_TOOLS: ("image",),
+}
+SUBTITLE_CHOICES = {
+    "video": [("Off", ""), ("Inside the video", "embed"), ("Separate .srt file", "srt")],
+    "audio": [("Off", ""), ("Separate .srt file", "srt")],
+}
+SPONSOR_CHOICES = [("Off", ""), ("Cut out sponsors", "remove"), ("Mark as chapters", "mark")]
 
 FORMAT_NOTES = {
     "mp4": "plays everywhere",
@@ -87,9 +125,16 @@ class ConvertOptions:
     note_for: Callable[[str, str], str] = format_note  # one-line note beside each format
     # The encoder a format needs and this ffmpeg lacks, or "". Such formats show greyed out.
     missing: Callable[[str, str], str] = lambda _kind, _fmt: ""
+    extras: frozenset[str] = frozenset()  # CLIP, SUBTITLES, ...: what the source can do
+    duration: float | None = None  # for checking a clip's times
 
 
 def for_video(info: VideoInfo, where: str) -> ConvertOptions:
+    extras = {CLIP, SUBTITLES} if info.duration else {SUBTITLES}
+    if info.is_youtube:
+        extras.add(SPONSORBLOCK)
+    if len(info.chapters) > 1:
+        extras.add(CHAPTERS)
     return ConvertOptions(
         title=info.title,
         kinds=["video", "audio"],
@@ -98,15 +143,44 @@ def for_video(info: VideoInfo, where: str) -> ConvertOptions:
             video_qualities(fmt, info.max_height) if kind == "video" else audio_qualities(fmt)
         ),
         where=where,
+        extras=frozenset(extras | {NORMALIZE}),
+        duration=info.duration,
+    )
+
+
+def for_playlist(title: str, count: int, where: str, youtube: bool) -> ConvertOptions:
+    """Several videos at once: no clip (each is a different length) and no chapter split."""
+    extras = {SUBTITLES, NORMALIZE} | ({SPONSORBLOCK} if youtube else set())
+    return ConvertOptions(
+        title=f"{title} · {count} video{'s' if count != 1 else ''}",
+        kinds=["video", "audio"],
+        formats={"video": VIDEO_FORMATS, "audio": AUDIO_FORMATS},
+        qualities=lambda kind, fmt: (
+            video_qualities(fmt, None) if kind == "video" else audio_qualities(fmt)
+        ),
+        where=where,
+        action=f"download {count}",
+        extras=frozenset(extras),
     )
 
 
 def remembered(settings: Settings, choice: Choice) -> Settings:
     """Settings with `choice` saved, so the dialog reopens where the user left it."""
+    extras = choice.extras
+    sticky = {}
+    if choice.kind in ("video", "audio"):
+        sticky = {
+            "last_subtitles": extras.subtitles,
+            "last_sub_langs": extras.sub_langs,
+            "last_sponsorblock": extras.sponsorblock,
+        }
+    if choice.kind == "audio":
+        sticky["last_normalize"] = extras.normalize
     return replace(
         settings,
         last_kind=choice.kind,
         **{f"last_{choice.kind}_format": choice.fmt, f"last_{choice.kind}_quality": choice.quality},
+        **sticky,
     )
 
 
@@ -153,10 +227,124 @@ class ConvertScreen(ModalScreen[Choice | None]):
                                     classes="picker-label",
                                 )
                                 yield OptionList(id=f"{kind}-quality")
+            if opts.extras:
+                yield from self._compose_extras()
             yield Static(id="summary")
             with Horizontal(id="dialog-actions"):
                 yield Button(opts.action, id="go", variant="primary")
                 yield Button("cancel", id="cancel")
+
+    def _compose_extras(self) -> ComposeResult:
+        s, extras = self.settings, self.options.extras
+        with Vertical(id="extras"):
+            if CLIP in extras:
+                with Horizontal(classes="extra-row", id="clip-row"):
+                    yield Label("Clip", classes="extra-label")
+                    yield Input(placeholder="start", id="clip-start", compact=True)
+                    yield Label("to", classes="extra-to")
+                    end = time_text(self.options.duration) if self.options.duration else "end"
+                    yield Input(placeholder=end, id="clip-end", compact=True)
+                    yield Static("[dim]1:30 or 90, blank for all[/dim]", classes="extra-hint")
+            if SUBTITLES in extras:
+                with Horizontal(classes="extra-row", id="subs-row"):
+                    yield Label("Subtitles", classes="extra-label")
+                    yield Select(
+                        SUBTITLE_CHOICES["video"],
+                        value=s.last_subtitles if s.last_subtitles in ("embed", "srt") else "",
+                        allow_blank=False,
+                        compact=True,
+                        id="subs",
+                    )
+                    yield Input(s.last_sub_langs, placeholder="en", id="sub-langs", compact=True)
+                    yield Static("[dim]languages: en, de, es…[/dim]", classes="extra-hint")
+            if SPONSORBLOCK in extras:
+                with Horizontal(classes="extra-row", id="sponsor-row"):
+                    yield Label("SponsorBlock", classes="extra-label")
+                    yield Select(
+                        SPONSOR_CHOICES,
+                        value=s.last_sponsorblock
+                        if s.last_sponsorblock in ("remove", "mark")
+                        else "",
+                        allow_blank=False,
+                        compact=True,
+                        id="sponsor",
+                    )
+            if CHAPTERS in extras or NORMALIZE in extras:
+                with Horizontal(classes="extra-row", id="audio-row"):
+                    yield Label("", classes="extra-label")
+                    if CHAPTERS in extras:
+                        yield Checkbox("One file per chapter", id="split", compact=True)
+                    if NORMALIZE in extras:
+                        yield Checkbox(
+                            "Even out the volume", s.last_normalize, id="normalize", compact=True
+                        )
+            if IMAGE_TOOLS in extras:
+                with Horizontal(classes="extra-row", id="image-row"):
+                    yield Label("Max size", classes="extra-label")
+                    yield Input(placeholder="KB", id="max-kb", compact=True, type="integer")
+                    yield Checkbox("Remove EXIF and location", id="strip", compact=True)
+
+    def _show_extras(self) -> None:
+        """Only the extras that apply to the current tab."""
+        if not self.options.extras:
+            return
+        kind = self.kind
+        for row, names in (
+            ("clip-row", (CLIP,)),
+            ("subs-row", (SUBTITLES,)),
+            ("sponsor-row", (SPONSORBLOCK,)),
+            ("audio-row", (CHAPTERS, NORMALIZE)),
+            ("image-row", (IMAGE_TOOLS,)),
+        ):
+            for widget in self.query(f"#{row}"):
+                widget.display = any(
+                    n in self.options.extras and kind in EXTRA_KINDS[n] for n in names
+                )
+        for widget in self.query("#normalize"):
+            widget.display = kind == "audio"
+        subs_kind = "audio" if kind == "audio" else "video"
+        if self.query("#subs") and getattr(self, "_subs_kind", "video") != subs_kind:
+            # Audio can't hold subtitles, so its list has no "inside" choice.
+            self._subs_kind = subs_kind
+            subs = self.query_one("#subs", Select)
+            choices = SUBTITLE_CHOICES[subs_kind]
+            keep = subs.value if any(v == subs.value for _, v in choices) else "srt"
+            keep = keep if subs.value else ""
+            subs.set_options(choices)
+            subs.value = keep
+        self.query_one("#extras").display = any(w.display for w in self.query(".extra-row"))
+
+    def _value(self, selector: str, default=None):
+        found = self.query(selector)
+        if not found:
+            return default
+        widget = found.first()
+        if not widget.display or not widget.parent.display:
+            return default
+        value = widget.value
+        return default if value is Select.BLANK else value
+
+    def extras(self) -> Extras:
+        """The extras picked for the current tab. Raises ValueError for a bad clip time."""
+        kind = self.kind
+        start = parse_time(self._value("#clip-start", "") or "")
+        end = parse_time(self._value("#clip-end", "") or "")
+        if problem := check_clip(start, end, self.options.duration):
+            raise ValueError(problem)
+        if self.options.duration and end is not None and end >= self.options.duration:
+            end = None  # "to the end", which lets yt-dlp skip the cut there
+        max_kb = self._value("#max-kb", "") or ""
+        return Extras(
+            start=start or None,  # from 0 is no cut at the start
+            end=end,
+            subtitles=self._value("#subs", "") or "",
+            sub_langs=(self._value("#sub-langs", "") or "en").replace(" ", ""),
+            sponsorblock=self._value("#sponsor", "") or "",
+            split_chapters=bool(self._value("#split", False)),
+            normalize=kind == "audio" and bool(self._value("#normalize", False)),
+            strip_metadata=bool(self._value("#strip", False)),
+            max_kb=int(max_kb) if str(max_kb).isdigit() and int(max_kb) > 0 else None,
+        )
 
     def on_mount(self) -> None:
         for kind in self.options.kinds:
@@ -168,6 +356,7 @@ class ConvertScreen(ModalScreen[Choice | None]):
             fmt_list.highlighted = index if index in usable else (usable or [0])[0]
             self._fill_qualities(kind)
         self.query_one(f"#{self.kind}-format", OptionList).focus()
+        self._show_extras()
         self._update_summary()
 
     @property
@@ -196,20 +385,32 @@ class ConvertScreen(ModalScreen[Choice | None]):
         ql.highlighted = qualities.index(previous) if previous in qualities else 0
 
     def choice(self) -> Choice | None:
+        """The pick, or None when nothing is picked. Raises ValueError for a bad clip time."""
         kind = self.kind
         fmt, q = self._selected(f"{kind}-format"), self._selected(f"{kind}-quality")
         if not fmt or not q:
             return None
-        return Choice(kind, fmt, q)
+        return Choice(kind, fmt, q, self.extras())
 
     def _update_summary(self) -> None:
-        c = self.choice()
+        try:
+            c = self.choice()
+        except ValueError as exc:
+            self.query_one("#summary", Static).update(f"[b $error]{escape(str(exc))}[/]")
+            return
         text = ""
         if c:
             text = f"[b]{escape(c.label)}[/b]  [dim]→ {escape(self.options.where)}[/dim]"
-            if note := self.options.note(c):
-                text += f"\n[dim]{escape(note)}[/dim]"
+            notes = [n for n in (self.options.note(c), extras_note(c)) if n]
+            if notes:
+                text += f"\n[dim]{escape(' '.join(notes))}[/dim]"
         self.query_one("#summary", Static).update(text)
+
+    @on(Input.Changed)
+    @on(Select.Changed)
+    @on(Checkbox.Changed)
+    def _extras_changed(self) -> None:
+        self._update_summary()
 
     @on(OptionList.OptionHighlighted)
     def _highlighted(self, event: OptionList.OptionHighlighted) -> None:
@@ -229,12 +430,36 @@ class ConvertScreen(ModalScreen[Choice | None]):
 
     @on(TabbedContent.TabActivated)
     def _tab(self) -> None:
+        self._show_extras()
         self._update_summary()
 
+    @on(Input.Submitted)
     @on(Button.Pressed, "#go")
     def action_go(self) -> None:
-        self.dismiss(self.choice())
+        try:
+            choice = self.choice()
+        except ValueError:
+            self.app.bell()  # the summary already says what's wrong
+            return
+        self.dismiss(choice)
 
     @on(Button.Pressed, "#cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+def extras_note(choice: Choice) -> str:
+    """What the extras will actually do, where that isn't obvious from the label."""
+    e = choice.extras
+    bits = []
+    if e.subtitles == "embed" and choice.kind == "video" and choice.fmt not in SUBTITLE_EMBED_EXTS:
+        bits.append(f"{choice.fmt.upper()} can't hold subtitles, so they come as a .srt file.")
+    if e.clipped and choice.kind != "image":
+        bits.append("Unless it is re-encoded, a clip starts at the nearest keyframe.")
+    if e.max_kb and choice.fmt not in ("jpg", "webp", "avif", "heic", "jxl"):
+        bits.append(
+            f"Max size works for JPG, WebP, AVIF, HEIC and JPEG XL, not {choice.fmt.upper()}."
+        )
+    if e.sponsorblock == "remove":
+        bits.append("Sponsor segments come from SponsorBlock's community list.")
+    return " ".join(bits)

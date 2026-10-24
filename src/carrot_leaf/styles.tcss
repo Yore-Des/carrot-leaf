@@ -563,3 +563,137 @@ Select:focus > SelectCurrent {
 Select > SelectOverlay {
     border: solid $primary;
 }
+
+/* ---------- convert extras: one compact line per option ---------- */
+
+#extras {
+    height: auto;
+    margin-top: 1;
+    padding-top: 1;
+    border-top: solid $panel;
+}
+
+.extra-row, .settings-row, #latest-row {
+    height: 1;
+    margin-bottom: 1;
+}
+
+.extra-label {
+    width: 14;
+    color: $text-muted;
+}
+
+.extra-to {
+    width: auto;
+    margin: 0 1;
+    color: $text-muted;
+}
+
+.extra-hint {
+    width: 1fr;
+    margin-left: 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#clip-start, #clip-end, #max-kb, #latest {
+    width: 10;
+}
+
+#sub-langs {
+    width: 12;
+    margin-left: 2;
+}
+
+#extras Select, .settings-row Select {
+    width: 24;
+}
+
+#extras Checkbox {
+    width: auto;
+    margin-right: 3;
+}
+
+#extras Input, #latest {
+    background: $panel;
+}
+
+#extras Input:focus, #latest:focus {
+    background: $primary 30%;
+}
+
+/* ---------- settings additions ---------- */
+
+#template {
+    border: solid $panel;
+    background: $background;
+}
+
+#template:focus {
+    border: solid $primary;
+}
+
+#template-preview {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#dialog.settings Checkbox {
+    width: auto;
+    margin-bottom: 1;
+}
+
+/* ---------- playlist picker and history ---------- */
+
+#dialog.playlist, #dialog.history {
+    width: 96;
+    height: 40;
+}
+
+#entries, #history {
+    height: 1fr;
+    margin: 1 0;
+    border: solid $panel;
+    background: $background;
+}
+
+#entries:focus, #history:focus {
+    border: solid $primary;
+}
+
+#picked {
+    height: 1;
+}
+
+#history-search {
+    border: solid $panel;
+    background: $background;
+}
+
+#history-search:focus {
+    border: solid $primary;
+}
+
+#history-help {
+    margin-top: 1;
+}
+
+#history-empty {
+    height: 1fr;
+    margin-top: 1;
+}
+
+/* Compact dropdowns on one-line rows: no border, a filled chip like the inputs. */
+#extras Select > SelectCurrent, .settings-row Select > SelectCurrent {
+    border: none;
+    background: $panel;
+}
+
+#extras Select:focus > SelectCurrent, .settings-row Select:focus > SelectCurrent {
+    border: none;
+    background: $primary 30%;
+}
+
+#latest-row .extra-label {
+    width: 16;
+}

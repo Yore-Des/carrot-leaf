@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import deps
-from .options import Choice, build_options
+from .options import DEFAULT_TEMPLATE, Choice, build_options
 
 _ids = itertools.count(1)
 
@@ -35,7 +35,14 @@ _PP_LABELS = {
     "Merger": "Merging video and audio",
     "Metadata": "Adding details",
     "EmbedThumbnail": "Adding cover art",
+    "EmbedSubtitle": "Adding subtitles",
+    "SubtitlesConvertor": "Converting subtitles",
+    "SponsorBlock": "Finding sponsor segments",
+    "ModifyChapters": "Cutting sponsor segments",
+    "SplitChapters": "Splitting into chapters",
 }
+# Leftovers yt-dlp may leave in the work folder that aren't results.
+_SCRATCH_SUFFIXES = (".part", ".ytdl", ".temp", ".jpg", ".webp", ".png", ".json")
 
 
 @dataclass
@@ -53,6 +60,11 @@ class Job:
     error: Exception | None = None
     # A local.FileInfo when this job converts a file on disk rather than downloading `url`.
     file: Any = field(default=None, repr=False)
+    # Filename template (options.DEFAULT_TEMPLATE style), and literal values for it, such
+    # as the playlist name and position, that yt-dlp can't know when it fetches one video.
+    template: str = DEFAULT_TEMPLATE
+    fields: dict[str, str] = field(default_factory=dict)
+    started: float | None = None  # time.monotonic() when it left the queue
     # Set from the UI thread; the download thread checks it at every progress update.
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
@@ -111,6 +123,8 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
         js_runtimes=deps.js_runtimes(),
         cookies_browser=cookies_browser,
         native_vorbis=bool(ffmpeg) and not deps.ffmpeg_has_encoder(ffmpeg.path, "libvorbis"),
+        template=job.template,
+        fields=job.fields,
     )
 
     streams = {"n": 0, "seen": set()}
@@ -151,9 +165,59 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
     produced = Path(final_path(info))
     if not produced.is_file():
         raise RuntimeError("Download finished but no file was produced.")
-    target = unique_path(download_dir / produced.name)
-    shutil.move(str(produced), target)
-    return str(target)
+    main = produced
+    if job.choice.extras.split_chapters:
+        tracks = produced.parent / produced.stem
+        if tracks.is_dir() and any(tracks.iterdir()):
+            produced.unlink()  # the chapters are the result; the whole file was a step
+            main = tracks
+    extras = job.choice.extras
+    if job.choice.kind == "audio" and (extras.normalize or extras.clipped):
+        from . import local
+
+        files = sorted(main.iterdir()) if main.is_dir() else [main]
+        for n, path in enumerate(files, 1):
+            label = "Evening out volume" if extras.normalize else "Cutting the clip"
+            if len(files) > 1:
+                label += f" {n}/{len(files)}"
+            local.refine_audio(
+                path,
+                job.choice.fmt,
+                ffmpeg.path if ffmpeg else None,
+                on_progress,
+                job.cancel_event,
+                start=extras.start if not main.is_dir() else None,
+                end=extras.end if not main.is_dir() else None,
+                normalize=extras.normalize,
+                label=label,
+            )
+    return str(collect(work, download_dir, main))
+
+
+def collect(work: Path, download_dir: Path, main: Path) -> Path:
+    """Move every result out of `work` into `download_dir`, keeping subfolders the filename
+    template made, and return where `main` ended up. Results are the download plus any
+    subtitle files or chapter tracks; nothing already in `download_dir` is replaced."""
+    moved = main
+    rel_main = main.relative_to(work)
+    if main.is_dir():
+        # Chapter tracks: one folder, moved whole (as "Name (2)" if the name is taken).
+        target = unique_path(download_dir / rel_main)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(main), target)
+        moved = target
+    for path in sorted(work.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(work)
+        if path != main and path.suffix.lower() in _SCRATCH_SUFFIXES:
+            continue
+        target = unique_path(download_dir / rel)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), target)
+        if path == main:
+            moved = target
+    return moved
 
 
 def unique_path(path: Path) -> Path:
