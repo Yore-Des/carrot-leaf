@@ -1,5 +1,6 @@
 """The Convert files tab, driven with Textual's Pilot. ffprobe/ffmpeg are replaced with fakes."""
 
+import sys
 import threading
 from pathlib import Path
 
@@ -84,6 +85,9 @@ def make(folder: Path, *names: str) -> list[Path]:
 
 
 def escaped(paths) -> str:
+    """Paths as a terminal pastes a drop: quoted on Windows, backslash-escaped elsewhere."""
+    if sys.platform == "win32":
+        return " ".join(f'"{p}"' for p in paths)
     return " ".join(str(p).replace(" ", "\\ ") for p in paths)
 
 
@@ -134,6 +138,7 @@ async def test_mixed_batch_converts_only_matching_files(files_fakes, tmp_path):
         assert button.size.width >= len("[c] convert all")  # re-measured after the change
         pane.convert()
         assert await settle(pilot, lambda: isinstance(app.screen, ConvertScreen))
+        await pilot.pause(0.5)  # let the dialog finish opening on its starting tab
         dialog = app.screen
         assert [p.id for p in dialog.query("TabPane")] == ["video", "audio", "image", "frames"]
         dialog.query_one("#kind").active = "image"
@@ -156,6 +161,7 @@ async def test_mixed_batch_converts_only_matching_files(files_fakes, tmp_path):
         # Audio applies to the clip and the song.
         pane.convert()
         assert await settle(pilot, lambda: isinstance(app.screen, ConvertScreen))
+        await pilot.pause(0.5)  # let the dialog finish opening on its starting tab
         assert app.screen.query_one("#kind").active == "image"  # remembers the last tab
         app.screen.query_one("#kind").active = "audio"
         await pilot.pause()
