@@ -25,6 +25,7 @@ from textual.widgets.option_list import Option
 
 from ..config import Settings
 from ..engine.options import TEMPLATE_FIELDS, template_error, template_preview
+from ..widgets.toggle import Toggle
 
 PARALLEL = [("One at a time", 1), ("2 at once", 2), ("3 at once", 3), ("4 at once", 4)]
 
@@ -65,7 +66,7 @@ class SettingsScreen(ModalScreen[Settings | None]):
             yield Label("Save downloads to", classes="field-label")
             with Horizontal(id="folder-row"):
                 yield Input(self.settings.download_dir, id="folder")
-                yield Button("browse", id="browse")
+                yield Button("Browse", id="browse")
             yield FolderTree(Path.home(), id="tree")
             yield Static(id="folder-error")
             yield Label("Name downloads", classes="field-label")
@@ -82,16 +83,22 @@ class SettingsScreen(ModalScreen[Settings | None]):
                     compact=True,
                     id="parallel",
                 )
-            yield Checkbox(
+            yield Toggle(
                 "Offer links I copy when I come back to Carrot",
                 self.settings.watch_clipboard,
                 id="watch-clipboard",
                 compact=True,
             )
-            yield Checkbox(
+            yield Toggle(
                 "Notify me when downloads finish in the background",
                 self.settings.notify_when_done,
                 id="notify",
+                compact=True,
+            )
+            yield Toggle(
+                "Keep captions so I can search what was said (press /)",
+                self.settings.keep_transcripts,
+                id="keep-transcripts",
                 compact=True,
             )
             yield Label(
@@ -109,8 +116,8 @@ class SettingsScreen(ModalScreen[Settings | None]):
                 id="cookies-note",
             )
             with Horizontal(id="dialog-actions"):
-                yield Button("save", id="save", variant="primary")
-                yield Button("cancel", id="cancel")
+                yield Button("Save", id="save", variant="primary")
+                yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
         self.query_one("#tree").display = False
@@ -173,6 +180,7 @@ class SettingsScreen(ModalScreen[Settings | None]):
                 parallel_downloads=parallel if isinstance(parallel, int) else 1,
                 watch_clipboard=self.query_one("#watch-clipboard", Checkbox).value,
                 notify_when_done=self.query_one("#notify", Checkbox).value,
+                keep_transcripts=self.query_one("#keep-transcripts", Checkbox).value,
             )
         )
 
@@ -196,7 +204,7 @@ class CookiesScreen(ModalScreen[str | None]):
             )
             yield OptionList(*(Option(name, id=key) for name, key in BROWSERS), id="browsers")
             with Horizontal(id="dialog-actions"):
-                yield Button("cancel", id="cancel")
+                yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
         self.query_one(OptionList).focus()

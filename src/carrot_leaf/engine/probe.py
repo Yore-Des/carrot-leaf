@@ -40,6 +40,11 @@ class VideoInfo:
         return self.raw.get("chapters") or []
 
     @property
+    def channel_url(self) -> str | None:
+        """The channel this video is from, for following it."""
+        return self.raw.get("channel_url") or self.raw.get("uploader_url")
+
+    @property
     def is_youtube(self) -> bool:
         return self.extractor.lower().startswith("youtube")
 
@@ -122,7 +127,9 @@ def pick_thumbnail(info: dict) -> str | None:
     return info.get("thumbnail")
 
 
-def probe(url: str, cookies_browser: str = "") -> VideoInfo | PlaylistInfo:
+def probe(
+    url: str, cookies_browser: str = "", limit: int = PLAYLIST_LIMIT
+) -> VideoInfo | PlaylistInfo:
     """Look up a video, or the list of videos in a playlist or channel."""
     from yt_dlp import YoutubeDL  # loaded with the first link, not at startup
 
@@ -133,7 +140,7 @@ def probe(url: str, cookies_browser: str = "") -> VideoInfo | PlaylistInfo:
         "noplaylist": True,
         # A playlist lists its videos without looking each one up, which takes seconds, not minutes.
         "extract_flat": "in_playlist",
-        "playlistend": PLAYLIST_LIMIT,
+        "playlistend": limit,
         "skip_download": True,
         "js_runtimes": deps.js_runtimes(),
         "logger": deps.SilentLogger(),

@@ -1,4 +1,4 @@
-"""Command-line entry point: `carrot [URL or FILE]`, `carrot get`, `carrot convert`,
+"""Command-line entry point: `carrot [URL or FILE]`, `carrot get`, `carrot convert`, `carrot sync`,
 `carrot setup`, `carrot update`, `carrot --version`."""
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
         return _update()
     if argv[:1] == ["setup"]:
         return _setup()
-    if argv[:1] in (["get"], ["convert"]):
+    if argv[:1] in (["get"], ["convert"], ["sync"]):
         from . import batch
 
         return batch.main(argv)

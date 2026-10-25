@@ -335,6 +335,7 @@ JobRow.-failed BlockBar, JobRow.-cancelled BlockBar {
 
 #keys {
     dock: bottom;
+    text-align: center;
     height: 2;
     padding: 0 2;
     border-top: solid $panel;
@@ -349,7 +350,9 @@ JobRow.-failed BlockBar, JobRow.-cancelled BlockBar {
     link-background-hover: $panel;
 }
 
-/* ---------- dialogs ---------- */
+/* ---------- dialogs ----------
+   One look for every popup, after gingertea: a rounded accent frame, sections in rounded
+   titled panels, one-row filled fields, and big equal-width buttons at the bottom. */
 
 ModalScreen {
     align: center middle;
@@ -362,48 +365,20 @@ ModalScreen {
     height: auto;
     max-height: 95%;
     padding: 1 2;
-    border: solid $primary;
+    overflow-y: auto;
+    border: round $primary;
     background: $background;
+    scrollbar-size-vertical: 1;
 }
 
-#dialog.cookies {
-    width: 60;
-}
-
-#dialog.picker-dialog {
-    width: 80;
-    height: 32;
-}
-
-#tree {
-    height: 1fr;
-    background: $background;
-}
-
-#dialog.sites {
-    width: 64;
-    height: 30;
-}
-
-#site-search {
-    border: solid $panel;
-    background: $background;
-}
-
-#site-search:focus {
-    border: solid $primary;
-}
-
-#site-result {
-    height: 1;
-    margin: 1 0;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
-}
-
-#sites {
-    height: 1fr;
-}
+#dialog.convert { width: 92; }
+#dialog.cookies { width: 60; }
+#dialog.sites { width: 64; height: 30; }
+#dialog.picker-dialog { width: 80; height: 32; }
+#dialog.playlist, #dialog.history, #dialog.following { width: 92; height: 34; }
+#dialog.search { width: 110; height: 40; }
+#dialog.clip-picker { width: 84; }
+#dialog.preset-save { width: 60; }
 
 #dialog-title {
     margin-bottom: 1;
@@ -411,71 +386,389 @@ ModalScreen {
     text-overflow: ellipsis;
 }
 
-#dialog-actions {
+#summary {
+    height: auto;
     margin-top: 1;
 }
+
+/* ---------- panels: rounded, titled in the border, lit up while you're inside ---------- */
+
+.panel {
+    width: 1fr;
+    border: round $panel;
+    border-title-color: $text-muted;
+    border-title-style: bold;
+    border-title-align: left;
+    padding: 0 1;
+    background: $background;
+}
+
+.panel:focus-within {
+    border: round $primary;
+    border-title-color: $primary;
+}
+
+.panel-row {
+    height: auto;
+}
+
+.panel-row .panel:first-of-type {
+    margin-right: 2;
+}
+
+.panel-row.top { height: 11; margin-top: 1; }
+.panel-row.bottom { height: 9; margin-top: 1; }
+
+#dialog .panel OptionList, #dialog .panel OptionList:focus {
+    height: 1fr;
+    border: none;
+    padding: 0;
+    background: $background;
+    background-tint: $foreground 0%;
+}
+
+/* ---------- buttons ---------- */
+
+/* Small buttons inside a dialog: a filled one-row chip, never a border. */
+#dialog Button {
+    height: 1;
+    min-width: 0;
+    padding: 0 2;
+    border: none;
+    background: $panel;
+    color: $foreground;
+    text-style: none;
+}
+
+#dialog Button:hover {
+    background: $primary 40%;
+    border: none;
+}
+
+#dialog Button:focus {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+    border: none;
+}
+
+#dialog Button.-active {
+    background: $primary-darken-1;
+    border: none;
+}
+
+/* The dialog's own actions: equal halves, three rows tall. Both are solid blocks whose
+   border matches their fill, so no lines show and both stand exactly as tall: an outline
+   would draw its edge mid-row and look shorter. Accent for the main one, grey for the other. */
+#dialog-actions {
+    height: 3;
+    margin-top: 1;
+}
+
+#dialog #dialog-actions Button {
+    width: 1fr;
+    height: 3;
+    margin: 0;
+    padding: 0 2;
+    content-align: center middle;
+    text-style: bold;
+    border: round $panel;
+    background: $panel;
+    color: $foreground;
+}
+
+#dialog #dialog-actions Button:first-of-type {
+    margin-right: 2;
+}
+
+#dialog #dialog-actions Button:hover {
+    border: round $panel-lighten-1;
+    background: $panel-lighten-1;
+}
+
+#dialog #dialog-actions Button:focus {
+    border: round $panel-lighten-2;
+    background: $panel-lighten-2;
+}
+
+#dialog #dialog-actions Button.-primary {
+    border: round $primary;
+    background: $primary;
+    color: $background;
+}
+
+#dialog #dialog-actions Button.-primary:hover {
+    border: round $primary-lighten-1;
+    background: $primary-lighten-1;
+}
+
+#dialog #dialog-actions Button.-primary:focus {
+    border: round $primary-lighten-2;
+    background: $primary-lighten-2;
+}
+
+#dialog #dialog-actions Button.-active {
+    border: round $primary-darken-1;
+    background: $primary-darken-1;
+    color: $background;
+}
+
+#dialog #dialog-actions #cancel:hover, #dialog #dialog-actions #cancel:focus {
+    border: round $error 70%;
+    background: $error 70%;
+    color: $background;
+}
+
+/* ---------- fields: one filled row, a warmer fill while typing ---------- */
+
+#dialog Input {
+    height: 1;
+    min-height: 1;
+    border: none;
+    padding: 0 1;
+    background: $panel;
+}
+
+#dialog Input:focus {
+    border: none;
+    background: $primary 25%;
+}
+
+#dialog Input:disabled {
+    background: $panel 40%;
+    color: $text-disabled;
+}
+
+Input > .input--placeholder {
+    color: $text-muted;
+    text-style: italic;
+}
+
+#dialog Select {
+    height: 1;
+    min-height: 1;
+}
+
+#dialog Select > SelectCurrent, #dialog Select:focus > SelectCurrent {
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: $panel;
+}
+
+#dialog Select:focus > SelectCurrent {
+    background: $primary 25%;
+}
+
+/* Lists that are a dialog's main content get the same rounded frame as the panels. */
+#dialog OptionList, #dialog SelectionList, #dialog DirectoryTree {
+    border: round $panel;
+    background: $background;
+}
+
+#dialog OptionList:focus, #dialog SelectionList:focus, #dialog DirectoryTree:focus {
+    border: round $primary;
+    background-tint: $foreground 0%;
+}
+
+/* ---------- convert ---------- */
 
 #kind {
     height: auto;
 }
 
-.pickers {
-    height: auto;
-    padding-top: 1;
+#presets {
+    height: 1;
+    margin-bottom: 1;
+    overflow: hidden;
 }
 
-.picker {
-    width: 1fr;
-    height: auto;
+#presets .extra-label {
+    width: 10;
 }
 
-.picker:first-of-type {
-    margin-right: 2;
+#presets Button {
+    margin-right: 1;
 }
 
-.picker-label, .field-label {
+#dialog .preset-chip.-active {
+    background: $primary;
+    color: $background;
+    text-style: bold;
+}
+
+#dialog .preset-save {
+    background: $background;
     color: $text-muted;
-    margin-bottom: 0;
 }
 
-.field-label {
+/* Clip: Start and End side by side, the timeline button under them. */
+.clip-fields {
+    height: 2;
     margin-top: 1;
 }
 
-.picker OptionList {
-    height: 10;
+.clip-fields Vertical {
+    width: 1fr;
+    height: 2;
 }
 
-#summary {
-    margin: 1 0 0 0;
+.clip-fields Vertical:first-of-type {
+    margin-right: 2;
+}
+
+.clip-label {
+    color: $text-muted;
+}
+
+#clip-start, #clip-end {
+    width: 100%;
+}
+
+#dialog .panel-button {
+    width: 100%;
+    margin-top: 1;
+}
+
+#clip-hint, #clip-note, #extras-note {
+    height: auto;
+    margin-top: 1;
+}
+
+/* Extras: labels on the left, values in one column on the right. */
+.extra-line {
+    height: 1;
+    margin-top: 1;
+}
+
+.extra-line:first-of-type {
+    margin-top: 1;
+}
+
+#extras-panel .extra-line {
+    margin-top: 0;
+}
+
+#extras-panel {
+    padding-top: 1;
+}
+
+.extra-label {
+    width: 1fr;
+    color: $text-muted;
+}
+
+#extras-panel Input {
+    width: 22;
+    background: $background;
+}
+
+#extras-panel Input:hover {
+    background: $panel;
+}
+
+#extras-panel Input:focus {
+    background: $primary 25%;
+}
+
+#extras-panel #max-kb {
+    width: 18;
+}
+
+.extra-unit {
+    width: 4;
+    color: $text-muted;
+    text-align: right;
+}
+
+/* ---------- clip picker ---------- */
+
+#clip-frame-panel {
+    height: 20;
+}
+
+#clip-frame {
+    width: 100%;
+    height: 1fr;
+}
+
+#clip-ends {
+    height: 1;
+    margin-top: 1;
+}
+
+#clip-zero, #clip-total {
+    width: 1fr;
+    color: $text-muted;
+}
+
+#clip-total {
+    text-align: right;
+}
+
+#clip-range {
+    height: 1;
+    margin-top: 1;
+}
+
+#clip-help {
+    height: 1;
+    margin-top: 1;
+}
+
+/* ---------- settings ---------- */
+
+.field-label {
+    color: $text-muted;
+    margin-top: 1;
 }
 
 #folder-row {
-    height: auto;
+    height: 1;
 }
 
 #folder {
     width: 1fr;
-    border: solid $panel;
-    background: $background;
-}
-
-#folder:focus {
-    border: solid $primary;
 }
 
 #browse {
-    margin: 1 0 0 1;
+    margin-left: 1;
 }
 
 #tree {
     height: 12;
-    border: solid $panel;
-    background: $background;
+    margin-top: 1;
 }
 
 #folder-error {
     height: auto;
+}
+
+#template {
+    width: 100%;
+}
+
+#template-preview {
+    height: auto;
+    margin-top: 1;
+}
+
+.settings-row {
+    height: 1;
+    margin-top: 1;
+}
+
+.settings-row .extra-label {
+    width: 18;
+}
+
+.settings-row Select {
+    width: 26;
+}
+
+#dialog.settings Checkbox {
+    width: auto;
+    margin-top: 1;
 }
 
 #cookies {
@@ -490,8 +783,105 @@ ModalScreen {
     height: auto;
     max-height: 10;
     margin: 1 0;
-    border: solid $panel;
-    background: $background;
+}
+
+/* ---------- save preset ---------- */
+
+#preset-what {
+    margin-bottom: 1;
+}
+
+.preset-label {
+    width: 8;
+    color: $text-muted;
+}
+
+#preset-name {
+    width: 1fr;
+}
+
+.preset-note {
+    margin: 1 0 0 8;
+}
+
+#preset-error {
+    height: auto;
+}
+
+/* ---------- sites ---------- */
+
+#site-result {
+    height: 1;
+    margin: 1 0;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#sites {
+    height: 1fr;
+}
+
+/* ---------- playlist, history, following, search ---------- */
+
+#entries, #history, #following, #search-hits {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#latest-row {
+    height: 1;
+    margin-top: 1;
+}
+
+#latest-row .extra-label {
+    width: 16;
+}
+
+#latest {
+    width: 10;
+}
+
+.extra-hint {
+    width: 1fr;
+    margin-left: 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#picked {
+    height: 1;
+    margin-top: 1;
+}
+
+#history-help, #following-help, #search-help {
+    margin-top: 1;
+}
+
+#history-empty, #following-empty {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#search-panes {
+    height: 1fr;
+}
+
+#search-hits {
+    width: 1fr;
+}
+
+#search-context {
+    width: 1fr;
+    height: 1fr;
+    margin: 1 0 0 2;
+    padding: 0 2;
+    border: round $panel;
+    border-title-color: $text-muted;
+}
+
+#search-status {
+    height: 1;
+    margin-top: 1;
 }
 
 /* ---------- lists, tabs, selects: grey at rest, one solid accent chip on focus ---------- */
@@ -561,199 +951,5 @@ Select:focus > SelectCurrent {
 }
 
 Select > SelectOverlay {
-    border: solid $primary;
-}
-
-/* ---------- convert options: a two-column form under the pickers ---------- */
-
-#extras {
-    height: auto;
-    margin-top: 1;
-    padding: 0;
-    border: none;
-    background: $background;
-}
-
-#extras:focus-within {
-    background-tint: $foreground 0%;
-}
-
-#extras CollapsibleTitle {
-    width: 1fr;
-    padding: 0;
-    color: $text;
-    text-style: none;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
-}
-
-#extras CollapsibleTitle:hover {
-    background: $panel;
-}
-
-#extras CollapsibleTitle:focus {
-    background: $primary;
-    color: $background;
-    text-style: bold;
-}
-
-#extras Contents {
-    height: auto;
-    padding: 1 0 0 0;
-}
-
-/* Rows indent under the title's arrow, so labels and the title text share one edge. */
-#extras .extra-row {
-    padding-left: 2;
-}
-
-/* Labels share one column; controls run from there to the right edge of the Quality list. */
-.extra-row {
-    height: 1;
-    margin-bottom: 1;
-}
-
-.extra-label {
-    width: 16;
-    color: $text-muted;
-}
-
-.extra-controls {
-    width: 1fr;
-    height: 1;
-}
-
-.extra-controls Input, .extra-controls Select {
-    width: 1fr;
-}
-
-.extra-to {
-    width: 5;
-    color: $text-muted;
-    text-align: center;
-}
-
-.extra-unit {
-    width: 5;
-    color: $text-muted;
-    text-align: right;
-}
-
-#sub-langs {
-    width: 18;
-    margin-left: 2;
-}
-
-#extras Input, #latest {
-    background: $panel;
-}
-
-#extras Input:focus, #latest:focus {
-    background: $primary 30%;
-}
-
-#extras Input:disabled {
-    background: $panel 50%;
-    color: $text-disabled;
-}
-
-.extra-row Toggle {
-    width: auto;
-}
-
-/* Used outside the dialog by the playlist picker and Settings. */
-.settings-row, #latest-row {
-    height: 1;
-    margin-bottom: 1;
-}
-
-.extra-hint {
-    width: 1fr;
-    margin-left: 2;
-    text-wrap: nowrap;
-    text-overflow: ellipsis;
-}
-
-#latest {
-    width: 10;
-}
-
-.settings-row Select {
-    width: 24;
-}
-
-/* ---------- settings additions ---------- */
-
-#template {
-    border: solid $panel;
-    background: $background;
-}
-
-#template:focus {
-    border: solid $primary;
-}
-
-#template-preview {
-    height: auto;
-    margin-bottom: 1;
-}
-
-#dialog.settings Checkbox {
-    width: auto;
-    margin-bottom: 1;
-}
-
-/* ---------- playlist picker and history ---------- */
-
-#dialog.playlist, #dialog.history {
-    width: 96;
-    height: 40;
-}
-
-#entries, #history {
-    height: 1fr;
-    margin: 1 0;
-    border: solid $panel;
-    background: $background;
-}
-
-#entries:focus, #history:focus {
-    border: solid $primary;
-}
-
-#picked {
-    height: 1;
-}
-
-#history-search {
-    border: solid $panel;
-    background: $background;
-}
-
-#history-search:focus {
-    border: solid $primary;
-}
-
-#history-help {
-    margin-top: 1;
-}
-
-#history-empty {
-    height: 1fr;
-    margin-top: 1;
-}
-
-/* Compact dropdowns on one-line rows: no border, a filled chip like the inputs. */
-.extra-controls Select > SelectCurrent, .settings-row Select > SelectCurrent {
-    border: none;
-    background: $panel;
-}
-
-.extra-controls Select:focus > SelectCurrent, .settings-row Select:focus > SelectCurrent {
-    border: none;
-    background: $primary 30%;
-}
-
-#latest-row .extra-label {
-    width: 16;
+    border: round $primary;
 }

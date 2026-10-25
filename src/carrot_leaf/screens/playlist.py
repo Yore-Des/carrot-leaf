@@ -9,10 +9,10 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, SelectionList, Static
-from textual.widgets.selection_list import Selection
+from textual.widgets import Button, Input, Label, Static
 
 from ..engine.probe import PlaylistInfo
+from ..widgets.ticklist import TickList
 
 
 class PlaylistScreen(ModalScreen[set[int] | None]):
@@ -35,19 +35,16 @@ class PlaylistScreen(ModalScreen[set[int] | None]):
             yield Static(f"[b]Pick videos[/b]  [dim]{escape(pl.title)}[/dim]", id="dialog-title")
             yield Static("[dim]space ticks a video · a all · n none · enter keeps your picks[/dim]")
             width = len(str(len(pl.entries)))
-            yield SelectionList[int](
-                *(
-                    Selection(
-                        Text.assemble(
-                            (f"{i + 1:>{width}}  ", "dim"),
-                            e.title,
-                            (f"  {e.duration_text}" if e.duration else "", "dim"),
-                        ),
-                        i,
-                        i in self.initial,
+            yield TickList(
+                [
+                    Text.assemble(
+                        (f"{i + 1:>{width}}  ", "dim"),
+                        e.title,
+                        (f"  {e.duration_text}" if e.duration else "", "dim"),
                     )
                     for i, e in enumerate(pl.entries)
-                ),
+                ],
+                self.initial,
                 id="entries",
             )
             with Horizontal(id="latest-row"):
@@ -56,16 +53,16 @@ class PlaylistScreen(ModalScreen[set[int] | None]):
                 yield Static("[dim]newest first on a channel[/dim]", classes="extra-hint")
             yield Static(id="picked")
             with Horizontal(id="dialog-actions"):
-                yield Button("done", id="go", variant="primary")
-                yield Button("cancel", id="cancel")
+                yield Button("Done", id="go", variant="primary")
+                yield Button("Cancel", id="cancel")
 
     def on_mount(self) -> None:
         self.query_one("#entries").focus()
         self._count()
 
     @property
-    def entries(self) -> SelectionList[int]:
-        return self.query_one("#entries", SelectionList)
+    def entries(self) -> TickList:
+        return self.query_one("#entries", TickList)
 
     def _count(self) -> None:
         n, total = len(self.entries.selected), len(self.playlist.entries)
@@ -74,7 +71,7 @@ class PlaylistScreen(ModalScreen[set[int] | None]):
             more = f"  [dim]the first {total} of {self.playlist.total} are listed[/dim]"
         self.query_one("#picked", Static).update(f"[b]{n}[/b] of {total} picked{more}")
 
-    @on(SelectionList.SelectedChanged)
+    @on(TickList.SelectedChanged)
     def _changed(self) -> None:
         self._count()
 

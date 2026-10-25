@@ -49,6 +49,7 @@ carrot <url>           # open with a link already loaded
 carrot <file>          # open Convert files with that file in it
 carrot get <url>       # download without opening the app (see below)
 carrot convert <file> --format webp   # convert without opening the app
+carrot sync            # get new videos from channels and playlists you follow
 carrot setup           # download ffmpeg, and list the formats it can make
 carrot update          # update yt-dlp
 carrot --version
@@ -66,6 +67,9 @@ lists every key:
 | `x`   | Cancel the current download (or use a row's cancel button)   |
 | `p`   | Pause the queue: running downloads finish, waiting ones hold |
 | `h`   | History: open, find, copy the link of or re-get anything saved |
+| `a`   | Follow this playlist or channel (or the channel of this video) |
+| `w`   | Following: what's new in everything you follow, and get it  |
+| `/`   | Search what was said in everything you've downloaded        |
 | `l`   | List supported sites. Search by name, or paste a link to check it |
 | `s`   | Settings: download folder and browser cookies              |
 | `t`   | Pick a theme                                               |
@@ -110,7 +114,43 @@ Under the format and quality lists, depending on the video:
   of numbered tracks.
 - **Even out the volume** (audio): normalises loudness to the -16 LUFS podcasts use.
 
-The dialog remembers your subtitle, SponsorBlock and volume picks for next time.
+The dialog remembers your subtitle, SponsorBlock and volume picks for next time. The
+Options line folds them away and says what's switched on; press `o` to open it.
+
+**Pick a clip by eye.** The Clip row has a **pick** button that opens a big frame of the
+video and a timeline. `←` `→` step through it (`shift` jumps 10 seconds), `[` marks the
+start, `]` the end, and Enter uses them. For YouTube the frames come from the storyboards
+the site makes for its own scrub bar, so nothing is downloaded; for a file on your computer
+ffmpeg grabs them.
+
+### Presets
+
+Set up the Convert dialog the way you like (say MP3, 128k, even volume, no sponsors) and
+press **+ save** at the top to keep it as a preset. Presets sit as chips along the top of
+the dialog; press its number (`1`–`9`) to fill in everything at once. When you save one you
+can make it the default for that site: from then on `d` on a YouTube link uses it instead of
+best MP4, and the card says so.
+
+### Following channels and playlists
+
+Press `a` on a playlist or channel, or on any video to follow its channel, and pick how new
+videos should be saved. Carrot remembers what's already there, and each time it starts it
+checks for anything newer. The status line says when there's something new; `w` lists
+everything you follow, Enter gets the new videos of one, `a` gets them all, `s` checks now
+and Delete unfollows. New videos land in a folder named after the channel.
+
+`carrot sync` does the same without the app, so a scheduled task or cron job can keep you
+up to date: `carrot sync --check` only says what's new.
+
+### Search what was said
+
+Every video you download keeps its captions (the creator's, or YouTube's automatic ones) in
+a small `transcripts` folder next to the settings. Press `/` and type: hits come up with
+the time they were said and the lines around them. Enter plays the file from that moment
+(in mpv, IINA or VLC if you have one; otherwise it opens and tells you where to skip to),
+`c` cuts the 30 seconds around it into a new file, and `o` shows the file. Words can come in
+any order; put a phrase in quotes to find it exactly. Turn this off in Settings if you don't
+want captions kept.
 
 ### Formats
 

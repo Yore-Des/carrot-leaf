@@ -48,6 +48,8 @@ class Settings:
     watch_clipboard: bool = True
     # A system notification when the queue finishes while Carrot is in the background.
     notify_when_done: bool = True
+    # Keep each download's captions so "what was said" can be searched (/).
+    keep_transcripts: bool = True
     # Extras the Convert dialog remembers between videos.
     last_subtitles: str = ""
     last_sub_langs: str = "en"

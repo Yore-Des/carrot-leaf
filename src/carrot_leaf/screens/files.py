@@ -17,8 +17,9 @@ from textual.widgets.option_list import Option
 
 from .. import history
 from ..engine import deps, errors, local, runner
+from ..engine.frames import for_file
 from ..engine.local import ANIMATED, AUDIO, IMAGE, FileInfo
-from ..engine.options import Choice
+from ..engine.options import Choice, Extras
 from ..engine.runner import Job, Progress
 from ..widgets.queue import DownloadQueue, JobRow, human_size, short_path, throttled
 from .convert import CLIP, IMAGE_TOOLS, NORMALIZE, ConvertOptions, ConvertScreen, remembered
@@ -64,6 +65,8 @@ class FilesPane(Vertical):
         self.running: Job | None = None
         self.last_file: str | None = None
         self.reading = 0
+        # Clips asked for (from search) of files still being read: path -> (start, end).
+        self.pending_clips: dict[Path, tuple[float, float]] = {}
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="files-row", classes="source-row"):
@@ -156,6 +159,23 @@ class FilesPane(Vertical):
         if all(f.path != info.path for f in self.files):
             self.files.append(info)
         self._render_files()
+        if (clip := self.pending_clips.pop(info.path, None)) is not None:
+            self._enqueue_clip(info, *clip)
+
+    def clip_file(self, path: Path, start: float, end: float) -> None:
+        """Cut start-end out of `path` into a new file of the same type, next to it."""
+        known = next((f for f in self.files if f.path == path), None)
+        if known is not None:
+            self._enqueue_clip(known, start, end)
+            return
+        self.pending_clips[path] = (start, end)
+        self.add_paths([path])
+
+    def _enqueue_clip(self, info: FileInfo, start: float, end: float) -> None:
+        kind = "audio" if info.media == AUDIO else "video"
+        ext = info.path.suffix.lower().lstrip(".")
+        fmt = ext if ext in local.formats_for(kind) else ("mp3" if kind == "audio" else "mp4")
+        self.enqueue(info, Choice(kind, fmt, "best", Extras(start=start or None, end=end)))
 
     def _read_failed(self, path: Path | None, exc: Exception, count: int) -> None:
         self.reading -= count
@@ -307,6 +327,10 @@ class FilesPane(Vertical):
             extras=frozenset(extras),
             # Check a clip against the shortest file, so it fits every one in the batch.
             duration=min(durations) if durations else None,
+            # Picking by eye needs one video to look at.
+            frames=(lambda: for_file(files[0], self.ffmpeg_for("video", "mp4")))
+            if len(files) == 1 and files[0].media == local.VIDEO
+            else None,
         )
 
     def convert(self) -> None:

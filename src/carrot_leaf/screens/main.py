@@ -18,18 +18,26 @@ from textual.events import AppBlur, AppFocus, Paste, Resize
 from textual.screen import Screen
 from textual.widgets import Button, ContentSwitcher, Input, Static
 
-from .. import config, history, logo
+from .. import config, following, history, logo, presets
 from ..engine import desktop, errors, local, runner, update
 from ..engine.desktop import reveal
 from ..engine.options import DOWNLOAD, Choice, safe_name
-from ..engine.probe import PlaylistInfo, VideoInfo, fetch_thumbnail, probe
+from ..engine.probe import (
+    PlaylistInfo,
+    VideoInfo,
+    channel_home_to_videos,
+    fetch_thumbnail,
+    probe,
+)
 from ..engine.runner import Job, Progress
 from ..widgets.queue import DownloadQueue, JobRow, short_path, throttled
 from ..widgets.video_card import VideoCard
 from .convert import ConvertScreen, for_playlist, remembered
 from .files import FilesPane
+from .following import FollowingScreen, GetNew
 from .history import HistoryScreen, Redownload
 from .playlist import PlaylistScreen
+from .search import ClipRequest, SearchScreen
 from .settings import CookiesScreen, SettingsScreen
 from .sites import SitesScreen
 
@@ -49,6 +57,8 @@ KEY_LIST = (
     ("x", "cancel", "screen.cancel_download"),
     ("p", "pause", "screen.pause"),
     ("h", "history", "screen.history"),
+    ("w", "following", "screen.following"),
+    ("/", "search", "screen.search"),
     ("l", "sites", "screen.sites"),
     ("s", "settings", "screen.settings"),
     ("o", "open", "screen.reveal"),
@@ -104,7 +114,9 @@ def key_bar(
             keys.append((k, "resume" if paused else label, action))
         else:
             keys.append((k, label, action))
-    return "  ".join(f"[b $primary]{k}[/] [@click={action}]{label}[/]" for k, label, action in keys)
+    return "   ".join(
+        f"[b $primary]{k}[/] [@click={action}]{label}[/]" for k, label, action in keys
+    )
 
 
 def tab_bar(active: str) -> str:
@@ -144,6 +156,9 @@ class MainScreen(Screen):
         Binding("e", "pick", "Pick videos"),
         Binding("p", "pause", "Pause queue"),
         Binding("h", "history", "History"),
+        Binding("w", "following", "Following"),
+        Binding("a", "follow", "Follow"),
+        Binding("slash", "search", "Search what was said"),
         Binding("v", "paste_clipboard", "Load copied link"),
         Binding("ctrl+t", "switch_tab", "Switch tab", priority=True),
         Binding("escape", "focus_url", "URL bar"),
@@ -170,6 +185,8 @@ class MainScreen(Screen):
         self.app_focused: bool | None = None
         self.batch: list[Job] = []  # finished since the queue last went quiet
         self.batch_started: float | None = None
+        self.new_videos = 0  # waiting in followed channels and playlists
+        self.syncing = False
         self.update_version: str | None = None
         self.getting_ffmpeg = False
         self.tab = DOWNLOAD_TAB
@@ -218,6 +235,10 @@ class MainScreen(Screen):
             self.check_clipboard()
         self.check_for_update()
         self.prefetch_ffmpeg()
+        self.new_videos = following.total_new()
+        self._render_status()
+        if (items := following.load()) and following.due(items):
+            self.sync_following()
 
     # ---------- layout bits ----------
 
@@ -272,6 +293,8 @@ class MainScreen(Screen):
             bits.append("[dim]getting ffmpeg…[/dim]")
         if self.paused:
             bits.append("[b $warning]queue paused · press p[/]")
+        if self.new_videos:
+            bits.append(f"[b $primary]{self.new_videos} new · press w[/]")
         if self.settings.cookies_browser:
             bits.append(f"[dim]cookies[/dim] {self.settings.cookies_browser}")
         if self.tab == FILES_TAB:
@@ -366,9 +389,13 @@ class MainScreen(Screen):
             self.playlist = info
             self.picked = set(range(len(info.entries)))
             card.show_playlist(info, len(self.picked))
+            card.set_follow(following.find(info.url) is not None)
         else:
             self.info = info
-            card.show_info(info)
+            preset = presets.default_for(info.extractor)
+            card.show_info(info, preset.name if preset else "")
+            if info.channel_url:
+                card.set_follow(False)
         self._render_keys()
         self.query_one("#download", Button).focus()
 
@@ -429,9 +456,11 @@ class MainScreen(Screen):
         if self.tab == FILES_TAB:
             self.app.bell()
         elif self.playlist:
-            self.enqueue_playlist(self.playlist, DOWNLOAD)
+            preset = presets.default_for(self.playlist.extractor)
+            self.enqueue_playlist(self.playlist, preset.choice() if preset else DOWNLOAD)
         elif self.info:
-            self.enqueue(self.info, DOWNLOAD)
+            preset = presets.default_for(self.info.extractor)
+            self.enqueue(self.info, preset.choice() if preset else DOWNLOAD)
         else:
             self.app.bell()
 
@@ -506,6 +535,136 @@ class MainScreen(Screen):
                 self.load(result.url)
 
         self.app.push_screen(HistoryScreen(), closed)
+
+    # ---------- following ----------
+
+    def action_follow(self) -> None:
+        """Follow the loaded playlist or channel, or the channel of the loaded video."""
+        if self.tab == FILES_TAB:
+            self.app.bell()
+            return
+        if self.playlist:
+            feed_url, title = self.playlist.url, self.playlist.title
+            count, extractor = len(self.playlist.entries), self.playlist.extractor
+        elif self.info and self.info.channel_url:
+            feed_url, title, count = self.info.channel_url, self.info.channel, 0
+            extractor = self.info.extractor
+        else:
+            self.app.bell()
+            return
+        if following.find(feed_url) or (
+            self.playlist is None and following.find(channel_home_to_videos(feed_url))
+        ):
+            self.action_following()
+            return
+        youtube = extractor.lower().startswith("youtube")
+        where = short_path(str(self.settings.download_path / safe_name(title)))
+        options = replace(
+            for_playlist(title, max(count, 1), where, youtube),
+            title=f"{title} · new videos",
+            action="follow",
+        )
+        playlist = self.playlist
+
+        def chosen(choice: Choice | None) -> None:
+            if choice is not None:
+                self._remember(choice)
+                self._start_following(feed_url, playlist, choice)
+
+        self.app.push_screen(ConvertScreen(options, self.settings), chosen)
+
+    @work(thread=True, group="follow")
+    def _start_following(self, url: str, feed: PlaylistInfo | None, choice: Choice) -> None:
+        try:
+            if feed is None:  # a channel, from one of its videos: read what's there now
+                found = probe(url, self.settings.cookies_browser, limit=following.SYNC_DEPTH)
+                if not isinstance(found, PlaylistInfo):
+                    raise ValueError("That channel has no video list Carrot Leaf can follow.")
+                feed = found
+            item = following.follow(feed, choice)
+        except Exception as exc:
+            msg = errors.explain(exc).message
+            self.app.call_from_thread(self.notify, msg, title="Couldn't follow", severity="error")
+            return
+        self.app.call_from_thread(self._now_following, item)
+
+    def _now_following(self, item: following.Followed) -> None:
+        self.query_one(VideoCard).set_follow(True)
+        self.notify(
+            f"New videos will be saved as {item.choice().base_label} in "
+            f"{short_path(str(self.settings.download_path / safe_name(item.title)))}. "
+            "Press w to see what you follow.",
+            title=f"Following {item.title}",
+            timeout=8,
+        )
+
+    def action_following(self) -> None:
+        def closed(result: GetNew | None) -> None:
+            if isinstance(result, GetNew):
+                self.get_new(result.items)
+
+        self.app.push_screen(FollowingScreen(self.sync_following, self.syncing), closed)
+
+    def get_new(self, items: list[following.Followed]) -> None:
+        template = self.settings.filename_template
+        if "{playlist}" not in template:
+            template = "{playlist}/" + template
+        count = 0
+        for item in items:
+            choice = item.choice()
+            for entry in following.mark_fetched(item):
+                job = Job(url=entry.url, title=entry.title, choice=choice, template=template)
+                job.fields = {"playlist": safe_name(item.title), "index": ""}
+                self._add_job(job)
+                count += 1
+            following.update(item)
+        self.new_videos = following.total_new()
+        self._render_status()
+        if self.tab != DOWNLOAD_TAB:
+            self.action_show_tab(DOWNLOAD_TAB)
+        self._pump()
+        if count:
+            self.notify(f"Getting {count} new video{'s' if count != 1 else ''}.")
+
+    @work(thread=True, exclusive=True, group="sync")
+    def sync_following(self) -> None:
+        """Look for new videos in everything followed. Runs at startup and on `s`."""
+        self.app.call_from_thread(self._sync_state, True)
+        try:
+            for item in following.load():
+                try:
+                    feed = probe(
+                        item.url, self.settings.cookies_browser, limit=following.SYNC_DEPTH
+                    )
+                    if not isinstance(feed, PlaylistInfo):
+                        raise ValueError("No longer a list of videos.")
+                    following.apply_sync(item, feed)
+                except Exception as exc:
+                    following.apply_sync(item, None, errors.explain(exc).message)
+                following.update(item)
+        finally:
+            self.app.call_from_thread(self._sync_state, False)
+
+    def _sync_state(self, busy: bool) -> None:
+        before = self.new_videos
+        self.syncing = busy
+        self.new_videos = following.total_new()
+        self._render_status()
+        if isinstance(self.app.screen, FollowingScreen):
+            self.app.screen.refresh_rows(syncing=busy)
+        if not busy and self.new_videos > before and self.app_focused is False:
+            desktop.notify("New videos", f"{self.new_videos} new in what you follow.")
+
+    # ---------- search ----------
+
+    def action_search(self) -> None:
+        def closed(result: ClipRequest | None) -> None:
+            if isinstance(result, ClipRequest):
+                self.files.clip_file(Path(result.path), result.start, result.end)
+                if self.tab != FILES_TAB:
+                    self.action_show_tab(FILES_TAB)
+
+        self.app.push_screen(SearchScreen(), closed)
 
     # ---------- clipboard ----------
 
@@ -641,6 +800,14 @@ class MainScreen(Screen):
     def _convert_pressed(self) -> None:
         self.action_convert()
 
+    @on(Button.Pressed, "#follow")
+    def _follow_pressed(self) -> None:
+        self.action_follow()
+
+    @on(Button.Pressed, "#pick")
+    def _pick_pressed(self) -> None:
+        self.action_pick()
+
     @on(Button.Pressed, "#update-ytdlp")
     def _update_pressed(self) -> None:
         self.action_update()
@@ -689,6 +856,7 @@ class MainScreen(Screen):
     def _add_job(self, job: Job) -> None:
         if not job.fields:
             job.template = self.settings.filename_template
+        job.keep_transcript = self.settings.keep_transcripts
         self.jobs.append(job)
         self.query_one(DownloadQueue).add(job)
 
