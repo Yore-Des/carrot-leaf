@@ -38,7 +38,8 @@ def parser() -> argparse.ArgumentParser:
             "  carrot get URL --start 1:30 --end 2:00 --format gif\n"
             "  carrot get PLAYLIST_URL --format m4a --latest 10\n"
             "  carrot convert clip.mov --format mp4\n"
-            "  carrot convert photo.heic --format jpg --max-kb 500 --strip-metadata"
+            "  carrot convert photo.heic --format jpg --max-kb 500 --strip-metadata\n"
+            "  carrot sync                      # new videos from what you follow"
         ),
     )
     sub = p.add_subparsers(dest="command", required=True)
@@ -75,6 +76,10 @@ def parser() -> argparse.ArgumentParser:
     conv.add_argument("--strip-metadata", action="store_true", help="images: drop EXIF and GPS")
     conv.add_argument("--max-kb", type=int, help="images: keep each file under this size")
     _shared(conv)
+
+    sync = sub.add_parser("sync", help="download new videos from channels and playlists you follow")
+    sync.add_argument("--check", action="store_true", help="only list what's new; download nothing")
+    sync.add_argument("--quiet", action="store_true", help="no progress, just the saved paths")
     return p
 
 
@@ -87,6 +92,8 @@ def _shared(p: argparse.ArgumentParser) -> None:
 
 def main(argv: list[str]) -> int:
     args = parser().parse_args(argv)
+    if args.command == "sync":
+        return _sync(args)
     try:
         start, end = parse_time(args.start or ""), parse_time(args.end or "")
     except ValueError as exc:
@@ -187,6 +194,7 @@ def _get(args, extras: Extras) -> int:
             )
 
     for n, job in enumerate(jobs, 1):
+        job.keep_transcript = settings.keep_transcripts
         label = f"[{n}/{len(jobs)}] {job.title}" if len(jobs) > 1 else job.title
         printer = Printer(args.quiet, label)
         try:
@@ -275,3 +283,65 @@ def _kind_for(info, fmt: str, frames: bool) -> str | None:
         if kind in kinds and fmt in local.formats_for(kind):
             return kind
     return None
+
+
+def _sync(args) -> int:
+    """Check everything followed, then download what's new in the format chosen for each."""
+    from . import following
+    from .engine.probe import PlaylistInfo, probe
+
+    settings = config.load()
+    items = following.load()
+    if not items:
+        print(
+            "You're not following anything. Press a on a channel or playlist in the app.",
+            file=sys.stderr,
+        )
+        return 0
+    failed = 0
+    for item in items:
+        try:
+            feed = probe(item.url, settings.cookies_browser, limit=following.SYNC_DEPTH)
+            if not isinstance(feed, PlaylistInfo):
+                raise ValueError("No longer a list of videos.")
+            following.apply_sync(item, feed)
+        except Exception as exc:
+            following.apply_sync(item, None, errors.explain(exc).message)
+            print(f"✗ {item.title}: {item.error}", file=sys.stderr)
+            failed += 1
+        following.update(item)
+        if not args.quiet or args.check:
+            print(f"{item.title}: {len(item.new)} new", file=sys.stderr)
+    if args.check:
+        return 1 if failed else 0
+
+    template = settings.filename_template
+    if "{playlist}" not in template:
+        template = "{playlist}/" + template
+    for item in items:
+        choice = item.choice()
+        for entry in item.new_entries:
+            job = runner.Job(url=entry.url, title=entry.title, choice=choice, template=template)
+            job.fields = {"playlist": safe_name(item.title), "index": ""}
+            job.keep_transcript = settings.keep_transcripts
+            printer = Printer(args.quiet, entry.title)
+            try:
+                path = runner.run_job(
+                    job, settings.download_path, printer, settings.cookies_browser
+                )
+            except KeyboardInterrupt:
+                printer.done("Cancelled.")
+                return 130
+            except Exception as exc:
+                _fail(printer, entry.title, exc)
+                failed += 1
+                continue  # stays on the waiting list for next time
+            printer.done(f"✓ {entry.title}")
+            print(path, flush=True)
+            history.add(
+                history.Entry(title=entry.title, path=path, label=choice.label, source=entry.url)
+            )
+            item.new = [e for e in item.new if e["id"] != entry.id]
+            item.seen = (item.seen + [entry.id])[-following.MAX_SEEN :]
+            following.update(item)
+    return 1 if failed else 0

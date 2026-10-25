@@ -119,3 +119,47 @@ def open_file(path: str) -> None:
             subprocess.Popen(["xdg-open", path])
     except OSError:
         pass
+
+
+# Players that can start at a given second, and how to ask them.
+PLAYERS = (
+    ("mpv", lambda path, t: ["mpv", f"--start={t:.0f}", path]),
+    ("iina", lambda path, t: ["iina", f"--mpv-start={t:.0f}", path]),
+    ("vlc", lambda path, t: ["vlc", f"--start-time={t:.0f}", path]),
+)
+MAC_PLAYERS = (
+    (
+        "/Applications/IINA.app",
+        lambda path, t: ["open", "-a", "IINA", "--args", f"--mpv-start={t:.0f}", path],
+    ),
+    (
+        "/Applications/VLC.app/Contents/MacOS/VLC",
+        lambda path, t: ["/Applications/VLC.app/Contents/MacOS/VLC", f"--start-time={t:.0f}", path],
+    ),
+)
+
+
+def play_at(path: str, seconds: float) -> bool:
+    """Play a file from `seconds` in a player that can start there. Falls back to opening it
+    normally and returns False, so the caller can say where to skip to."""
+    for exe, build in PLAYERS:
+        if shutil.which(exe):
+            try:
+                subprocess.Popen(
+                    build(path, seconds), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                return True
+            except OSError:
+                continue
+    if sys.platform == "darwin":
+        for app, build in MAC_PLAYERS:
+            if Path(app).exists():
+                try:
+                    subprocess.Popen(
+                        build(path, seconds), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
+                    return True
+                except OSError:
+                    continue
+    open_file(path)
+    return False

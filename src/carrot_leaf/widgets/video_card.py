@@ -41,6 +41,7 @@ class VideoCard(Vertical):
                         yield Button("\\[d] download", id="download")
                         yield Button("\\[c] convert", id="convert")
                         yield Button("\\[e] pick videos", id="pick")
+                        yield Button("\\[a] follow", id="follow")
                         yield Static("best mp4 · pick a format", id="action-hint")
 
     def on_mount(self) -> None:
@@ -72,11 +73,14 @@ class VideoCard(Vertical):
         )
         self._show("card-error")
 
-    def show_info(self, info: VideoInfo) -> None:
+    def show_info(self, info: VideoInfo, preset: str = "") -> None:
+        """`preset` names this site's default preset, which `d` then uses."""
         self.border_title = "video"
         self.query_one("#pick").display = False
+        self.query_one("#follow").display = False
         self.query_one("#download", Button).label = "\\[d] download"
-        self.query_one("#action-hint", Static).update("best mp4 · pick a format")
+        hint = f"{preset} preset" if preset else "best mp4 · pick a format"
+        self.query_one("#action-hint", Static).update(_escape(hint))
         self.query_one("#thumb", Thumbnail).image = None
         self.query_one("#video-title", Static).update(f"[b]{_escape(info.title)}[/b]")
         rows = [
@@ -98,6 +102,7 @@ class VideoCard(Vertical):
 
     def show_playlist(self, pl: PlaylistInfo, picked: int) -> None:
         self.border_title = "playlist"
+        self.query_one("#follow").display = False
         self.query_one("#thumb", Thumbnail).image = None
         self.query_one("#video-title", Static).update(f"[b]{_escape(pl.title)}[/b]")
         count = f"{len(pl.entries)}"
@@ -118,6 +123,16 @@ class VideoCard(Vertical):
         self.update_picked(pl, picked)
         self.query_one("#pick").display = True
         self._show("card-info")
+
+    def set_follow(self, following: bool) -> None:
+        """Show the follow button; on a video it follows the video's channel."""
+        button = self.query_one("#follow", Button)
+        button.display = True
+        playlist = self.border_title == "playlist"
+        button.label = (
+            "following ✓" if following else "\\[a] follow" if playlist else "\\[a] follow channel"
+        )
+        button.refresh(layout=True)
 
     def update_picked(self, pl: PlaylistInfo, picked: int) -> None:
         all_ = picked == len(pl.entries)

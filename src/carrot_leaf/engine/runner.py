@@ -65,6 +65,8 @@ class Job:
     template: str = DEFAULT_TEMPLATE
     fields: dict[str, str] = field(default_factory=dict)
     started: float | None = None  # time.monotonic() when it left the queue
+    # Save what was said (the captions) so it can be searched later; see transcripts.py.
+    keep_transcript: bool = False
     # Set from the UI thread; the download thread checks it at every progress update.
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
@@ -162,6 +164,11 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
 
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(job.url, download=True)
+        said = None
+        if job.keep_transcript:
+            from .. import transcripts
+
+            said = transcripts.fetch(ydl, info)  # same session: its cookies and headers
     produced = Path(final_path(info))
     if not produced.is_file():
         raise RuntimeError("Download finished but no file was produced.")
@@ -191,7 +198,22 @@ def _run(job, work, download_dir, ffmpeg, on_progress, cookies_browser) -> str:
                 normalize=extras.normalize,
                 label=label,
             )
-    return str(collect(work, download_dir, main))
+    result = collect(work, download_dir, main)
+    if said:
+        from .. import transcripts
+
+        lang, cues = said
+        transcripts.save(
+            transcripts.Transcript(
+                id=info.get("id") or job.url,
+                title=info.get("title") or job.title,
+                path=str(result),
+                url=info.get("webpage_url") or job.url,
+                lang=lang,
+                cues=cues,
+            )
+        )
+    return str(result)
 
 
 def collect(work: Path, download_dir: Path, main: Path) -> Path:

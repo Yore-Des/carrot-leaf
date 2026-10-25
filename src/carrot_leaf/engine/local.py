@@ -619,9 +619,22 @@ def extension(kind: str, fmt: str) -> str:
 def output_name(info: FileInfo, choice: Choice) -> str:
     """File (or, for frames, folder) name for the result, next to the original."""
     stem = info.path.stem
+    e = choice.extras
+    if e.clipped and choice.kind != "image":
+        # "talk 1m30s-2m00s.mp4": says which part it is, and never clashes with the original.
+        end = clip_stamp(e.end) if e.end is not None else "end"
+        stem = f"{stem} {clip_stamp(e.start or 0)}-{end}"
     if choice.kind == "frames":
         return f"{stem} frames"
     return f"{stem}.{extension(choice.kind, choice.fmt)}"
+
+
+def clip_stamp(seconds: float) -> str:
+    """1m30s, 1h02m03s: a time that's safe in a filename on every system."""
+    whole = int(seconds)
+    h, rem = divmod(whole, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}h{m:02}m{sec:02}s" if h else f"{m}m{sec:02}s"
 
 
 def build_ffmpeg_args(

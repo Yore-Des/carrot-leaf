@@ -10,23 +10,13 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.content import Content
 from textual.screen import ModalScreen
-from textual.widgets import (
-    Button,
-    Checkbox,
-    Collapsible,
-    Input,
-    Label,
-    OptionList,
-    Select,
-    Static,
-    TabbedContent,
-    TabPane,
-)
+from textual.widgets import Button, Input, Label, OptionList, Static, TabbedContent, TabPane
 from textual.widgets.option_list import Option
 
+from .. import presets
 from ..config import Settings
+from ..engine.frames import for_video as frames_for_video
 from ..engine.options import (
     AUDIO_FORMATS,
     FRAME_RATE_LABELS,
@@ -42,7 +32,8 @@ from ..engine.options import (
     video_qualities,
 )
 from ..engine.probe import VideoInfo
-from ..widgets.toggle import Toggle
+from ..presets import site_key
+from ..widgets.cycle import CycleValue
 
 TAB_NAMES = {"video": "Video", "audio": "Audio", "image": "Image", "frames": "Frames"}
 
@@ -64,10 +55,23 @@ EXTRA_KINDS = {
     IMAGE_TOOLS: ("image",),
 }
 SUBTITLE_CHOICES = {
-    "video": [("Off", ""), ("Inside the video", "embed"), ("Separate .srt file", "srt")],
-    "audio": [("Off", ""), ("Separate .srt file", "srt")],
+    "video": [("Off", ""), ("Inside the video", "embed"), (".srt file", "srt")],
+    "audio": [("Off", ""), (".srt file", "srt")],
 }
-SPONSOR_CHOICES = [("Off", ""), ("Cut out sponsors", "remove"), ("Mark as chapters", "mark")]
+SPONSOR_CHOICES = [("Off", ""), ("Cut them out", "remove"), ("Mark as chapters", "mark")]
+SPLIT_CHOICES = [("Off", False), ("One file each", True)]
+VOLUME_CHOICES = [("As it is", False), ("Even out", True)]
+METADATA_CHOICES = [("Keep", False), ("Remove", True)]
+# Each Extras row: its id, the extra it belongs to, and its label.
+EXTRA_ROWS = (
+    ("subs-row", SUBTITLES, "Subtitles"),
+    ("langs-row", SUBTITLES, "Languages"),
+    ("sponsor-row", SPONSORBLOCK, "SponsorBlock"),
+    ("chapters-row", CHAPTERS, "Chapters"),
+    ("volume-row", NORMALIZE, "Volume"),
+    ("size-row", IMAGE_TOOLS, "Max size"),
+    ("metadata-row", IMAGE_TOOLS, "Metadata"),
+)
 
 FORMAT_NOTES = {
     "mp4": "plays everywhere",
@@ -130,6 +134,9 @@ class ConvertOptions:
     missing: Callable[[str, str], str] = lambda _kind, _fmt: ""
     extras: frozenset[str] = frozenset()  # CLIP, SUBTITLES, ...: what the source can do
     duration: float | None = None  # for checking a clip's times
+    # Builds a frames.FrameSource for picking a clip by eye; None when there's nothing to show.
+    frames: Callable[[], object] | None = None
+    site: str = ""  # presets.site_key() of a link, so a preset can become that site's default
 
 
 def for_video(info: VideoInfo, where: str) -> ConvertOptions:
@@ -148,6 +155,8 @@ def for_video(info: VideoInfo, where: str) -> ConvertOptions:
         where=where,
         extras=frozenset(extras | {NORMALIZE}),
         duration=info.duration,
+        frames=(lambda: frames_for_video(info)) if info.duration else None,
+        site=site_key(info.extractor),
     )
 
 
@@ -164,6 +173,7 @@ def for_playlist(title: str, count: int, where: str, youtube: bool) -> ConvertOp
         where=where,
         action=f"download {count}",
         extras=frozenset(extras),
+        site="youtube" if youtube else "",
     )
 
 
@@ -187,44 +197,46 @@ def remembered(settings: Settings, choice: Choice) -> Settings:
     )
 
 
-# What the folded Options line lists, per tab, when nothing is switched on yet.
-EXTRA_NAMES = {
-    CLIP: "clip",
-    SUBTITLES: "subtitles",
-    SPONSORBLOCK: "SponsorBlock",
-    CHAPTERS: "chapters",
-    NORMALIZE: "volume",
-    IMAGE_TOOLS: "size, metadata",
-}
-
-
 class ConvertScreen(ModalScreen[Choice | None]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("o", "toggle_options", "Options", show=False),
+        *(Binding(str(n), f"preset({n})", show=False) for n in range(1, 10)),
     ]
 
-    def __init__(self, source: VideoInfo | ConvertOptions, settings: Settings) -> None:
+    def __init__(
+        self,
+        source: VideoInfo | ConvertOptions,
+        settings: Settings,
+        initial: Extras | None = None,
+    ) -> None:
+        """`initial` fills in a clip, e.g. from a search hit."""
         super().__init__()
         self.settings = settings
+        self.initial = initial
+        self.presets: list[presets.Preset] = []  # those that fit; filled once options exist
         if isinstance(source, ConvertOptions):
             self.options = source
         else:
             from ..widgets.queue import short_path
 
             self.options = for_video(source, short_path(str(settings.download_path)))
+        self.presets = [p for p in presets.load() if self._fits(p)]
 
     def compose(self) -> ComposeResult:
+        # Four panels of the same size: Format and Quality (per tab) over Clip and Extras.
+        # Values line up on each panel's right edge; the buttons share the width equally.
         opts = self.options
         initial = self.settings.last_kind if self.settings.last_kind in opts.kinds else None
-        with Vertical(id="dialog"):
+        with Vertical(id="dialog", classes="convert"):
             yield Static(f"[b]Convert[/b]  [dim]{escape(opts.title)}[/dim]", id="dialog-title")
+            with Horizontal(id="presets"):
+                yield from self._preset_chips()
             with TabbedContent(initial=initial or opts.kinds[0], id="kind"):
                 for kind in opts.kinds:
                     with TabPane(TAB_NAMES[kind], id=kind):
-                        with Horizontal(classes="pickers"):
-                            with Vertical(classes="picker"):
-                                yield Label("Format", classes="picker-label")
+                        with Horizontal(classes="panel-row top"):
+                            with Vertical(classes="panel") as panel:
+                                panel.border_title = "Format"
                                 yield OptionList(
                                     *(
                                         format_option(
@@ -234,141 +246,117 @@ class ConvertScreen(ModalScreen[Choice | None]):
                                     ),
                                     id=f"{kind}-format",
                                 )
-                            with Vertical(classes="picker"):
-                                yield Label(
-                                    "Rate"
-                                    if kind == "frames"
-                                    else "Size"
-                                    if kind == "image"
-                                    else "Quality",
-                                    classes="picker-label",
+                            with Vertical(classes="panel") as panel:
+                                panel.border_title = {"frames": "Rate", "image": "Size"}.get(
+                                    kind, "Quality"
                                 )
                                 yield OptionList(id=f"{kind}-quality")
             if opts.extras:
-                yield from self._compose_extras()
+                with Horizontal(classes="panel-row bottom", id="extras"):
+                    with Vertical(classes="panel", id="clip-panel") as panel:
+                        panel.border_title = "Clip"
+                        yield from self._compose_clip()
+                    with Vertical(classes="panel", id="extras-panel") as panel:
+                        panel.border_title = "Extras"
+                        yield from self._compose_extras()
             yield Static(id="summary")
             with Horizontal(id="dialog-actions"):
-                yield Button(opts.action, id="go", variant="primary")
-                yield Button("cancel", id="cancel")
+                yield Button(opts.action.capitalize(), id="go", variant="primary")
+                yield Button("Cancel", id="cancel")
+
+    def _compose_clip(self) -> ComposeResult:
+        if CLIP in self.options.extras:
+            with Horizontal(classes="clip-fields"):
+                with Vertical():
+                    yield Label("Start", classes="clip-label")
+                    yield Input(placeholder="0:00", id="clip-start", compact=True)
+                with Vertical():
+                    yield Label("End", classes="clip-label")
+                    end = time_text(self.options.duration) if self.options.duration else "end"
+                    yield Input(placeholder=end, id="clip-end", compact=True)
+            if self.options.frames:
+                yield Button("Pick on the timeline", id="clip-pick", classes="panel-button")
+            yield Static("[dim]1:30, 90 or 1m30s · blank for all[/dim]", id="clip-hint")
+        yield Static(id="clip-note")
 
     def _compose_extras(self) -> ComposeResult:
-        # A two-column form under the pickers: labels line up on the left, and every
-        # control stretches to the same right edge as the Quality list above it.
-        # Folded by default into one line that says what's on; open, it's a two-column form
-        # whose controls end at the same right edge as the Quality list above.
         s, extras = self.settings, self.options.extras
-        with Collapsible(
-            title="Options", collapsed=True, collapsed_symbol="▸", expanded_symbol="▾", id="extras"
-        ):
-            if CLIP in extras:
-                with Horizontal(classes="extra-row", id="clip-row"):
-                    yield Label("Clip", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Input(placeholder="from 0:00", id="clip-start", compact=True)
-                        yield Label("→", classes="extra-to")
-                        end = time_text(self.options.duration) if self.options.duration else "end"
-                        yield Input(placeholder=f"to {end}", id="clip-end", compact=True)
-            if SUBTITLES in extras:
-                with Horizontal(classes="extra-row", id="subs-row"):
-                    yield Label("Subtitles", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Select(
-                            SUBTITLE_CHOICES["video"],
-                            value=s.last_subtitles if s.last_subtitles in ("embed", "srt") else "",
-                            allow_blank=False,
-                            compact=True,
-                            id="subs",
-                        )
-                        yield Input(
-                            s.last_sub_langs,
-                            placeholder="languages",
-                            id="sub-langs",
-                            compact=True,
-                            tooltip="Languages, comma separated: en, de, es",
-                        )
-            if SPONSORBLOCK in extras:
-                with Horizontal(classes="extra-row", id="sponsor-row"):
-                    yield Label("SponsorBlock", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Select(
-                            SPONSOR_CHOICES,
-                            value=s.last_sponsorblock
-                            if s.last_sponsorblock in ("remove", "mark")
-                            else "",
-                            allow_blank=False,
-                            compact=True,
-                            id="sponsor",
-                        )
-            if CHAPTERS in extras:
-                with Horizontal(classes="extra-row", id="chapters-row"):
-                    yield Label("Chapters", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Toggle("One file per chapter", id="split")
-            if NORMALIZE in extras:
-                with Horizontal(classes="extra-row", id="volume-row"):
-                    yield Label("Volume", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Toggle("Even out loudness", s.last_normalize, id="normalize")
-            if IMAGE_TOOLS in extras:
-                with Horizontal(classes="extra-row", id="size-row"):
-                    yield Label("Max size", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Input(
-                            placeholder="no limit", id="max-kb", compact=True, type="integer"
-                        )
-                        yield Label("KB", classes="extra-unit")
-                with Horizontal(classes="extra-row", id="metadata-row"):
-                    yield Label("Metadata", classes="extra-label")
-                    with Horizontal(classes="extra-controls"):
-                        yield Toggle("Remove EXIF and location", id="strip")
+        for row_id, name, label in EXTRA_ROWS:
+            if name not in extras:
+                continue
+            with Horizontal(classes="extra-line", id=row_id):
+                yield Label(label, classes="extra-label")
+                if row_id == "subs-row":
+                    saved = s.last_subtitles if s.last_subtitles in ("embed", "srt") else ""
+                    yield CycleValue(SUBTITLE_CHOICES["video"], saved, id="subs")
+                elif row_id == "langs-row":
+                    yield Input(
+                        s.last_sub_langs, placeholder="en, de", id="sub-langs", compact=True
+                    )
+                elif row_id == "sponsor-row":
+                    saved = s.last_sponsorblock if s.last_sponsorblock in ("remove", "mark") else ""
+                    yield CycleValue(SPONSOR_CHOICES, saved, id="sponsor")
+                elif row_id == "chapters-row":
+                    yield CycleValue(SPLIT_CHOICES, False, id="split")
+                elif row_id == "volume-row":
+                    yield CycleValue(VOLUME_CHOICES, s.last_normalize, id="normalize")
+                elif row_id == "size-row":
+                    yield Input(placeholder="no limit", id="max-kb", compact=True, type="integer")
+                    yield Label("KB", classes="extra-unit")
+                elif row_id == "metadata-row":
+                    # Photos carry camera details and often GPS; dropping them is the safe default.
+                    yield CycleValue(METADATA_CHOICES, True, id="strip")
+        yield Static(id="extras-note")
 
     def _show_extras(self) -> None:
-        """Only the extras that apply to the current tab."""
+        """Only the extras that apply to the current tab; a short note where none do."""
         if not self.options.extras:
             return
         kind = self.kind
-        for row, name in (
-            ("clip-row", CLIP),
-            ("subs-row", SUBTITLES),
-            ("sponsor-row", SPONSORBLOCK),
-            ("chapters-row", CHAPTERS),
-            ("volume-row", NORMALIZE),
-            ("size-row", IMAGE_TOOLS),
-            ("metadata-row", IMAGE_TOOLS),
-        ):
-            for widget in self.query(f"#{row}"):
+        for row_id, name, _label in EXTRA_ROWS:
+            for widget in self.query(f"#{row_id}"):
                 widget.display = kind in EXTRA_KINDS[name]
+        clip_ok = CLIP in self.options.extras and kind in EXTRA_KINDS[CLIP]
+        for widget in self.query(".clip-fields, #clip-pick, #clip-hint"):
+            widget.display = clip_ok
+        note = self.query_one("#clip-note", Static)
+        note.display = not clip_ok
+        if not clip_ok:
+            note.update(
+                "[dim]Pictures have no timeline.[/dim]"
+                if kind == "image"
+                else "[dim]Clips work on one video at a time.[/dim]"
+            )
+        rows = [w for w in self.query(".extra-line") if w.display]
+        empty = self.query_one("#extras-note", Static)
+        empty.display = not rows
+        empty.update("[dim]Nothing extra for this one.[/dim]")
         subs_kind = "audio" if kind == "audio" else "video"
         if self.query("#subs") and getattr(self, "_subs_kind", "video") != subs_kind:
-            # Audio can't hold subtitles, so its list has no "inside" choice.
+            # Audio can't hold subtitles, so its choices have no "inside" one.
             self._subs_kind = subs_kind
-            subs = self.query_one("#subs", Select)
-            choices = SUBTITLE_CHOICES[subs_kind]
-            keep = subs.value if any(v == subs.value for _, v in choices) else "srt"
-            keep = keep if subs.value else ""
-            subs.set_options(choices)
-            subs.value = keep
+            subs = self.query_one("#subs", CycleValue)
+            keep = subs.value if subs.value in ("", "srt") else "srt"
+            subs.set_choices(SUBTITLE_CHOICES[subs_kind], keep)
         self._sync_langs()
-        self.query_one("#extras").display = any(w.display for w in self.query(".extra-row"))
 
     def _sync_langs(self) -> None:
         # Languages only matter with subtitles on; greyed out, the row still lines up.
         if self.query("#subs"):
-            self.query_one("#sub-langs").disabled = not self.query_one("#subs", Select).value
+            self.query_one("#sub-langs").disabled = not self.query_one("#subs", CycleValue).value
 
     def _value(self, selector: str, default=None):
         found = self.query(selector)
         if not found:
             return default
         widget = found.first()
-        # Rows for another tab don't count. A folded section still does: it only hides them.
+        # Rows and fields for another tab don't count.
         node = widget
         while node is not None and node.id != "extras":
-            if node.has_class("extra-row") and not node.display:
+            if not node.display:
                 return default
             node = node.parent
-        value = widget.value
-        return default if value is Select.BLANK else value
+        return widget.value
 
     def extras(self) -> Extras:
         """The extras picked for the current tab. Raises ValueError for a bad clip time."""
@@ -403,7 +391,122 @@ class ConvertScreen(ModalScreen[Choice | None]):
             self._fill_qualities(kind)
         self.query_one(f"#{self.kind}-format", OptionList).focus()
         self._show_extras()
+        if self.initial is not None and self.initial.clipped and self.query("#clip-start"):
+            self.query_one("#clip-start", Input).value = (
+                time_text(self.initial.start) if self.initial.start else ""
+            )
+            self.query_one("#clip-end", Input).value = (
+                time_text(self.initial.end) if self.initial.end is not None else ""
+            )
         self._update_summary()
+
+    # ---------- presets ----------
+
+    def _fits(self, preset: presets.Preset) -> bool:
+        opts = self.options
+        return (
+            preset.kind in opts.kinds
+            and preset.fmt in opts.formats[preset.kind]
+            and not opts.missing(preset.kind, preset.fmt)
+        )
+
+    def _preset_chips(self) -> ComposeResult:
+        yield Label("Presets", classes="extra-label")
+        for n, p in enumerate(self.presets, 1):
+            yield Button(f"{n} {p.name}", id=f"preset-{n}", classes="preset-chip")
+        hint = "+ save" if self.presets else "+ save these settings as a preset"
+        yield Button(hint, id="preset-save", classes="preset-save")
+
+    async def _refresh_chips(self) -> None:
+        self.presets = [p for p in presets.load() if self._fits(p)]
+        row = self.query_one("#presets", Horizontal)
+        await row.remove_children()
+        await row.mount_all(list(self._preset_chips()))
+        self._update_summary()
+
+    def action_preset(self, n: int) -> None:
+        if not 1 <= n <= len(self.presets):
+            return
+        self.apply(self.presets[n - 1].choice())
+
+    def apply(self, choice: Choice) -> None:
+        """Fill in the whole dialog from `choice` (format, quality and every option)."""
+        self.query_one("#kind", TabbedContent).active = choice.kind
+        formats = self.options.formats[choice.kind]
+        self.query_one(f"#{choice.kind}-format", OptionList).highlighted = formats.index(choice.fmt)
+        self._fill_qualities(choice.kind)
+        ql = self.query_one(f"#{choice.kind}-quality", OptionList)
+        ids = [ql.get_option_at_index(i).id for i in range(ql.option_count)]
+        if choice.quality in ids:
+            ql.highlighted = ids.index(choice.quality)
+        e = choice.extras
+        self._show_extras()  # the new tab's rows and subtitle choices, before setting them
+        for selector, value in (
+            ("#subs", e.subtitles),
+            ("#sub-langs", e.sub_langs),
+            ("#sponsor", e.sponsorblock),
+            ("#split", e.split_chapters),
+            ("#normalize", e.normalize),
+            ("#strip", e.strip_metadata),
+            ("#max-kb", str(e.max_kb or "")),
+        ):
+            for widget in self.query(selector):
+                try:
+                    widget.value = value
+                except Exception:  # e.g. "inside the video" on the Audio tab
+                    pass
+        self._sync_langs()
+        self._update_summary()
+
+    @on(Button.Pressed, ".preset-chip")
+    def _chip_pressed(self, event: Button.Pressed) -> None:
+        self.action_preset(int((event.button.id or "0").rsplit("-", 1)[-1]))
+
+    @on(Button.Pressed, "#preset-save")
+    def _save_preset(self) -> None:
+        try:
+            choice = self.choice()
+        except ValueError:
+            self.app.bell()
+            return
+        if choice is None:
+            return
+        from .preset_save import PresetSaveScreen
+
+        async def saved(preset: presets.Preset | None) -> None:
+            if preset is not None:
+                presets.upsert(preset)
+                await self._refresh_chips()
+                self.notify(f"Saved the {preset.name} preset.")
+
+        self.app.push_screen(PresetSaveScreen(choice, self.options.site), saved)
+
+    # ---------- clip picker ----------
+
+    @on(Button.Pressed, "#clip-pick")
+    def action_pick_clip(self) -> None:
+        if not self.options.frames:
+            return
+        source = self.options.frames()
+        if source is None:
+            self.notify("This video has no preview frames to pick from.", severity="warning")
+            return
+        from .clip import ClipScreen
+
+        try:
+            start = parse_time(self.query_one("#clip-start", Input).value)
+            end = parse_time(self.query_one("#clip-end", Input).value)
+        except ValueError:
+            start = end = None
+
+        def picked(result: tuple[float | None, float | None] | None) -> None:
+            if result is None:
+                return
+            a, b = result
+            self.query_one("#clip-start", Input).value = time_text(a) if a else ""
+            self.query_one("#clip-end", Input).value = time_text(b) if b is not None else ""
+
+        self.app.push_screen(ClipScreen(source, self.options.title, start, end), picked)
 
     @property
     def kind(self) -> str:
@@ -438,46 +541,28 @@ class ConvertScreen(ModalScreen[Choice | None]):
             return None
         return Choice(kind, fmt, q, self.extras())
 
-    def _update_options_title(self, choice: Choice | None, problem: str = "") -> None:
-        if not self.options.extras:
-            return
-        if problem:
-            detail = Content.styled(problem, "$error")
-        elif choice and choice.extras.label:
-            detail = Content.styled(choice.extras.label, "$primary")
-        else:
-            offered = [
-                EXTRA_NAMES[name]
-                for name in EXTRA_NAMES
-                if name in self.options.extras and self.kind in EXTRA_KINDS[name]
-            ]
-            detail = Content.styled(", ".join(offered), "$text-muted")
-        self.query_one("#extras", Collapsible).title = Content.assemble("Options   ", detail)
-
-    def action_toggle_options(self) -> None:
-        if self.options.extras:
-            box = self.query_one("#extras", Collapsible)
-            box.collapsed = not box.collapsed
-
     def _update_summary(self) -> None:
         try:
             c = self.choice()
         except ValueError as exc:
             self.query_one("#summary", Static).update(f"[b $error]{escape(str(exc))}[/]")
-            self._update_options_title(None, str(exc))
             return
-        self._update_options_title(c)
         text = ""
         if c:
             text = f"[b]{escape(c.label)}[/b]  [dim]→ {escape(self.options.where)}[/dim]"
             notes = [n for n in (self.options.note(c), extras_note(c)) if n]
+            site = next((p.site for p in self.presets if p.site and p.matches(c)), "")
+            if site:
+                notes.insert(0, f"{presets.site_name(site)} links use this when you press d.")
             if notes:
                 text += f"\n[dim]{escape(' '.join(notes))}[/dim]"
         self.query_one("#summary", Static).update(text)
+        for n, p in enumerate(self.presets, 1):
+            for chip in self.query(f"#preset-{n}"):
+                chip.set_class(bool(c) and p.matches(c), "-active")
 
     @on(Input.Changed)
-    @on(Select.Changed)
-    @on(Checkbox.Changed)
+    @on(CycleValue.Changed)
     def _extras_changed(self) -> None:
         self._sync_langs()
         self._update_summary()

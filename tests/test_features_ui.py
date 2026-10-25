@@ -267,8 +267,8 @@ def test_cli_convert(monkeypatch, tmp_path, capsys):
     assert batch.main(["convert", str(src), "-f", "mp3"]) == 1  # a picture has no sound
 
 
-async def test_options_fold_shows_what_is_on(fakes):
-    from textual.widgets import Collapsible
+async def test_four_panels_follow_the_tab(fakes):
+    from carrot_leaf.widgets.cycle import CycleValue
 
     app = CarrotLeafApp()
     async with app.run_test(size=(110, 50)) as pilot:
@@ -278,16 +278,21 @@ async def test_options_fold_shows_what_is_on(fakes):
         await pilot.press("c")
         assert await settle(pilot, lambda: isinstance(app.screen, ConvertScreen))
         dialog = app.screen
-        fold = dialog.query_one("#extras", Collapsible)
-        assert fold.collapsed
-        assert "subtitles" in str(fold.title)  # nothing on yet: lists what's available
-        dialog.query_one("#subs").value = "embed"  # works while folded
+        dialog.query_one("#kind").active = "video"
         await pilot.pause()
-        assert "subs" in str(fold.title)
-        await pilot.press("o")
-        assert not fold.collapsed
+        titles = [p.border_title for p in dialog.query(".panel") if p.display]
+        assert [str(t) for t in titles[-2:]] == ["Clip", "Extras"]
+        assert not dialog.query_one("#volume-row").display  # volume is for audio
+        subs = dialog.query_one("#subs", CycleValue)
+        assert subs.value == "" and dialog.query_one("#sub-langs").disabled
+        subs.focus()
+        await pilot.press("enter")  # Off -> Inside the video
+        assert subs.value == "embed" and not dialog.query_one("#sub-langs").disabled
         assert dialog.choice().extras.subtitles == "embed"
-        assert dialog.query_one("#sub-langs").disabled is False
-        dialog.query_one("#subs").value = ""
+        dialog.query_one("#kind").active = "audio"
         await pilot.pause()
-        assert dialog.query_one("#sub-langs").disabled
+        await pilot.pause()
+        assert dialog.query_one("#volume-row").display
+        assert subs.value == "srt"  # audio can't hold subtitles inside
+        await pilot.press("left")
+        assert subs.value == ""
