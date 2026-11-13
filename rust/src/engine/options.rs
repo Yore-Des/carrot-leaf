@@ -366,7 +366,7 @@ pub fn build_args(choice: &Choice, download_dir: &str, b: &BuildArgs) -> Vec<Str
         "--no-overwrites".into(),
         "--no-warnings".into(),
     ];
-    let mut push = |a: &mut Vec<String>, items: &[&str]| a.extend(items.iter().map(|s| s.to_string()));
+    let push = |a: &mut Vec<String>, items: &[&str]| a.extend(items.iter().map(|s| s.to_string()));
     if let Some(f) = b.ffmpeg_location {
         push(&mut a, &["--ffmpeg-location", f]);
     }

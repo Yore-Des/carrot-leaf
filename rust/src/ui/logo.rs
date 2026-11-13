@@ -56,12 +56,3 @@ pub fn render(width: usize, gradient: &[Rgb], shadow: Rgb) -> Vec<Line<'static>>
     }
 }
 
-pub fn height(width: usize) -> u16 {
-    if width >= BIG_WIDTH {
-        6
-    } else if width >= SMALL_WIDTH {
-        4
-    } else {
-        1
-    }
-}

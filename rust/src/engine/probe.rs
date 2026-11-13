@@ -14,7 +14,6 @@ const CHANNEL_TABS: &[&str] = &["/videos", "/shorts", "/streams", "/live", "/pod
 #[derive(Clone, Debug)]
 pub struct VideoInfo {
     pub url: String,
-    pub id: String,
     pub title: String,
     pub channel: String,
     pub duration: Option<f64>,
@@ -68,7 +67,6 @@ impl Entry {
 #[derive(Clone, Debug)]
 pub struct PlaylistInfo {
     pub url: String,
-    pub id: String,
     pub title: String,
     pub channel: String,
     pub entries: Vec<Entry>,
@@ -274,7 +272,6 @@ pub fn playlist_info(info: &Value, url: &str) -> Result<PlaylistInfo, String> {
     let first_thumb = || entries(info).iter().find_map(|e| pick_thumbnail(e));
     Ok(PlaylistInfo {
         url: str_of(info, "webpage_url").unwrap_or_else(|| url.to_string()),
-        id: str_of(info, "id").unwrap_or_default(),
         title: if title.is_empty() { "Untitled playlist".into() } else { title },
         channel: str_of(info, "channel").or_else(|| str_of(info, "uploader")).unwrap_or_else(|| "—".into()),
         entries: out,
@@ -288,7 +285,6 @@ pub fn video_info(info: Value, url: &str) -> VideoInfo {
     let formats: Vec<Value> = info.get("formats").and_then(Value::as_array).cloned().unwrap_or_default();
     VideoInfo {
         url: str_of(&info, "webpage_url").unwrap_or_else(|| url.to_string()),
-        id: str_of(&info, "id").unwrap_or_default(),
         title: str_of(&info, "title").unwrap_or_else(|| "Untitled".into()),
         channel: str_of(&info, "channel").or_else(|| str_of(&info, "uploader")).unwrap_or_else(|| "—".into()),
         duration: num_of(&info, "duration"),
