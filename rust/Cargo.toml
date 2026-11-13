@@ -1,6 +1,6 @@
 [package]
 name = "carrot-leaf"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2024"
 description = "Download and convert videos from YouTube and 1,300+ other sites in your terminal. Runs on yt-dlp."
 license = "MIT"
