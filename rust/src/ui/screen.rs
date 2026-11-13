@@ -219,7 +219,7 @@ impl App {
     }
 
     fn cx(&mut self) -> (Cx<'_>, &mut Vec<(Box<dyn Dialog>, Purpose)>) {
-        (Cx { settings: &self.settings, tx: &self.tx, toasts: &mut self.toasts }, &mut self.modals)
+        (Cx { tx: &self.tx, toasts: &mut self.toasts }, &mut self.modals)
     }
 
     fn bell(&mut self) {

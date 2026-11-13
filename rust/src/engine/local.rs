@@ -24,6 +24,7 @@ pub enum Media {
 
 pub type HasEncoder<'a> = &'a dyn Fn(&str) -> bool;
 
+#[cfg(test)]
 pub fn any_encoder(_: &str) -> bool {
     true
 }

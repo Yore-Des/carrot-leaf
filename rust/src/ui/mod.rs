@@ -107,7 +107,6 @@ pub enum Purpose {
 }
 
 pub struct Cx<'a> {
-    pub settings: &'a Settings,
     pub tx: &'a Sender<Msg>,
     pub toasts: &'a mut Toasts,
 }

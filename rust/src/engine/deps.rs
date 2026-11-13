@@ -26,7 +26,6 @@ fn ffmpeg_zip(key: &str) -> Option<&'static str> {
 #[derive(Clone, Debug)]
 pub struct Tool {
     pub path: String,
-    pub bundled: bool,
 }
 
 const EXE: &str = if cfg!(windows) { ".exe" } else { "" };
@@ -61,7 +60,7 @@ fn is_executable(p: &Path) -> bool {
 pub fn system_ffmpeg() -> Option<Tool> {
     let (ff, fp) = (which("ffmpeg")?, which("ffprobe")?);
     if ff.parent() == fp.parent() {
-        return Some(Tool { path: ff.parent()?.to_string_lossy().into(), bundled: false });
+        return Some(Tool { path: ff.parent()?.to_string_lossy().into() });
     }
     None
 }
@@ -94,7 +93,7 @@ pub fn bundled_ffmpeg_ready() -> bool {
 }
 
 pub fn bundled_ffmpeg() -> Option<Tool> {
-    bundled_ffmpeg_ready().then(|| Tool { path: bundled_dir().to_string_lossy().into(), bundled: true })
+    bundled_ffmpeg_ready().then(|| Tool { path: bundled_dir().to_string_lossy().into() })
 }
 
 /// Every ffmpeg Carrot can use, the system's first.
@@ -106,7 +105,7 @@ pub fn ffmpeg_candidates() -> Vec<Tool> {
 pub fn fetch_bundled_ffmpeg(show_progress: bool) -> Result<Tool, String> {
     let target = bundled_dir();
     if target.join(CRUMB).exists() {
-        return Ok(Tool { path: target.to_string_lossy().into(), bundled: true });
+        return Ok(Tool { path: target.to_string_lossy().into() });
     }
     let key = platform_key();
     let url = ffmpeg_zip(&key).ok_or_else(|| format!("No ffmpeg build for {key}. Install ffmpeg yourself."))?;
@@ -143,7 +142,7 @@ pub fn fetch_bundled_ffmpeg(show_progress: bool) -> Result<Tool, String> {
             return Err(e.to_string());
         }
     }
-    Ok(Tool { path: target.to_string_lossy().into(), bundled: true })
+    Ok(Tool { path: target.to_string_lossy().into() })
 }
 
 fn download(url: &str, dest: &Path, show_progress: bool) -> Result<(), String> {
