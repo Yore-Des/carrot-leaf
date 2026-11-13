@@ -1203,7 +1203,11 @@ impl App {
     }
 
     fn prefetch_ffmpeg(&mut self) {
-        if std::env::var_os("CARROT_NO_FFMPEG_FETCH").is_some() || deps::bundled_ffmpeg_ready() {
+        // Only fetch the bundled copy when there is no ffmpeg + ffprobe on PATH to use.
+        if std::env::var_os("CARROT_NO_FFMPEG_FETCH").is_some()
+            || deps::system_ffmpeg().is_some()
+            || deps::bundled_ffmpeg_ready()
+        {
             return;
         }
         let tx = self.tx.clone();

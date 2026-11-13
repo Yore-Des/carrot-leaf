@@ -33,3 +33,24 @@ jobs:
       - name: Install from this checkout with install.sh
         run: CARROT_LEAF_SOURCE="$PWD" sh install.sh
       - run: ~/.local/bin/carrot --version
+
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: The built app starts
+        shell: bash
+        run: ./target/release/carrot --version
