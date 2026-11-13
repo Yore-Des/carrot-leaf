@@ -1,6 +1,6 @@
 [project]
 name = "carrot-leaf"
-version = "0.7.2"
+version = "0.8.0"
 description = "Download and convert videos from YouTube and 1,300+ other sites in your terminal. Runs on yt-dlp."
 readme = "README.md"
 license = "MIT"
@@ -17,35 +17,47 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 dependencies = [
+    # The app itself is the Rust `carrot` binary in the wheel; it runs these as programs.
     "yt-dlp[default]>=2026.8.19",
-    "textual>=8.2",
-    "pillow>=10",
-    "platformdirs>=4",
-    "tomli-w>=1.0",
-    "tomli>=2.0; python_version < '3.11'",
     "deno>=2.0",
-    "pillow-heif>=0.18",
-    "pillow-jxl-plugin>=1.3",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Yore-Des/carrot-leaf"
 Issues = "https://github.com/Yore-Des/carrot-leaf/issues"
 
-[project.scripts]
-carrot = "carrot_leaf.cli:main"
-carrot-leaf = "carrot_leaf.cli:main"
-
 [dependency-groups]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
+    { include-group = "python-app" },
+]
+# The original Python app in src/carrot_leaf. It isn't shipped any more, but it is kept as
+# the reference the Rust port and benchmarks/compare.py are measured against.
+python-app = [
+    "textual>=8.2",
+    "pillow>=10",
+    "platformdirs>=4",
+    "tomli-w>=1.0",
+    "tomli>=2.0; python_version < '3.11'",
+    "pillow-heif>=0.18",
+    "pillow-jxl-plugin>=1.3",
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.23,<0.12.0"]
-build-backend = "uv_build"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+# Ship the Rust app as the `carrot` program in a platform wheel.
+bindings = "bin"
+manifest-path = "rust/Cargo.toml"
+strip = true
+
+[tool.uv]
+# Developing doesn't build the Rust wheel into the venv; `uv build` and CI do.
+package = false
 
 [tool.ruff]
 line-length = 100
@@ -57,4 +69,5 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 testpaths = ["tests"]

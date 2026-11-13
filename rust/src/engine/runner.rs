@@ -7,7 +7,6 @@ use crate::transcripts;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -159,7 +158,7 @@ fn run(job: &Job, work: &Path, download_dir: &Path, ffmpeg: Option<&str>, on_pro
     };
     args.push("--print".into());
     args.push(format!("after_move:[carrotdone] %(.{{{fields}}})j"));
-    let mut cmd = Command::new(deps::yt_dlp());
+    let mut cmd = deps::yt_dlp_command();
     cmd.args(&args).arg("--").arg(&job.url);
 
     let mut seen: Vec<String> = vec![];

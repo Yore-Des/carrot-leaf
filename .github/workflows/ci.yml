@@ -26,6 +26,29 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest -q
 
+  wheel:
+    # Build the wheel users get and install it the way they do, then check the Rust app
+    # finds the yt-dlp installed next to it (uv copies the program out on Windows).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: uv build --wheel
+      - name: Install it like a user and run it
+        shell: bash
+        run: |
+          uv tool install --python 3.12 dist/*.whl
+          "$(uv tool dir --bin)/carrot" --version | tee version.txt
+          if grep -q "not found" version.txt; then echo "carrot can't find its yt-dlp"; exit 1; fi
+
   install-script:
     runs-on: ubuntu-latest
     steps:

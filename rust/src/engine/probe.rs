@@ -4,7 +4,7 @@ use super::{deps, errors};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::LazyLock;
 
 /// Channels list their newest videos first; past this many, the picker gets unwieldy.
@@ -143,7 +143,7 @@ pub fn pick_thumbnail(info: &Value) -> Option<String> {
 }
 
 fn run_json(url: &str, cookies_browser: &str, limit: usize, whole_list: bool) -> Result<Value, String> {
-    let mut cmd = Command::new(deps::yt_dlp());
+    let mut cmd = deps::yt_dlp_command();
     // A watch link inside a playlist or mix means just that video, unless asked for the list.
     cmd.arg("-J").arg(if whole_list { "--yes-playlist" } else { "--no-playlist" });
     cmd.args(["--flat-playlist", "--no-warnings", "--playlist-end"]).arg(limit.to_string());

@@ -11,8 +11,8 @@ Carrot downloads and converts videos in your terminal. Paste a link from YouTube
 any of the 1,300+ sites yt-dlp knows, a whole playlist or channel included, then press
 `d` to save it as MP4 or `c` to pick a format, cut a clip, add subtitles or skip sponsors. It also converts files already on your computer: drop in videos, songs or
 photos and turn them into any of 51 formats. It runs on
-[yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://ffmpeg.org) and
-[Textual](https://textual.textualize.io/).
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://ffmpeg.org), and the
+app itself is a single Rust program built with [ratatui](https://ratatui.rs).
 
 ## Install
 
@@ -29,15 +29,15 @@ powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Yor
 ```
 
 The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs Carrot
-Leaf with its own copy of Python, then downloads ffmpeg (about 50 MB). You don't need
-Python, ffmpeg or anything else set up first. Set `CARROT_LEAF_NO_FFMPEG=1` to skip the
+Leaf (the app plus its own copy of yt-dlp and Deno), then downloads ffmpeg (about 50 MB).
+You don't need Python, ffmpeg or anything else set up first. Set `CARROT_LEAF_NO_FFMPEG=1` to skip the
 ffmpeg download; Carrot Leaf then gets it in the background the first time you open it.
 
 If you already use uv or pipx:
 
 ```sh
 uv tool install carrot-leaf
-pipx install carrot-leaf      # needs Python 3.10+
+pipx install carrot-leaf      # needs Python 3.10+ for yt-dlp
 carrot setup                  # optional: download ffmpeg now instead of on first launch
 ```
 
@@ -267,8 +267,8 @@ Converting needs ffmpeg, and YouTube needs Deno to run its JavaScript. Deno ship
 the package. The installer downloads Carrot Leaf's own ffmpeg build, and if you already
 have ffmpeg, Carrot Leaf uses both: yours for anything it can do, its own for formats
 yours can't make (Homebrew's ffmpeg has no WebP or Theora, for example). JPEG XL and
-HEIC go through [Pillow](https://python-pillow.org) plugins that install with Carrot
-Leaf, since no common ffmpeg build writes them. If a format still can't be made on your
+HEIC, which no common ffmpeg build writes, go through libjxl's `cjxl` and libheif's
+`heif-enc` when they're installed (`brew install jpeg-xl libheif`, for example). If a format still can't be made on your
 machine, the dialog shows it greyed out with what it needs.
 
 ## Uninstall
@@ -287,15 +287,23 @@ Windows.
 
 ```sh
 git clone https://github.com/Yore-Des/carrot-leaf && cd carrot-leaf
-uv sync
-uv run carrot
-uv run pytest                       # offline tests
-CARROT_LIVE=1 uv run pytest         # also run real downloads
-uv run ruff check src tests && uv run ruff format src tests
+cd rust && cargo run --release   # the app
+cargo test && cargo clippy
+cd .. && uv build                # the PyPI wheel (maturin), as users get it
 ```
 
-To release, bump `version` in `pyproject.toml` and push a `vX.Y.Z` tag. GitHub Actions
-builds it and publishes to PyPI.
+The app is the Rust program in `rust/`. It ships on PyPI as a platform wheel that holds
+the `carrot` binary and pulls in yt-dlp and Deno as ordinary dependencies. The original
+Python version in `src/carrot_leaf` is kept as a reference with its tests:
+
+```sh
+uv sync && uv run pytest            # offline tests
+CARROT_LIVE=1 uv run pytest         # also run real downloads
+```
+
+To release, bump `version` in `pyproject.toml` and `rust/Cargo.toml` and push a
+`vX.Y.Z` tag. GitHub Actions builds wheels for Linux, macOS and Windows and publishes
+them to PyPI.
 
 ## Please be nice
 

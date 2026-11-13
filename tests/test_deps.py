@@ -1,8 +1,10 @@
 """Carrot Leaf's own ffmpeg download, and what loads at startup. Offline."""
 
+import os
 import subprocess
 import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -87,7 +89,15 @@ def test_startup_does_not_load_yt_dlp_or_pillow():
         "print(sorted(m for m in ('yt_dlp', 'PIL', 'pillow_heif', 'pillow_jxl', "
         "'importlib.metadata') if m in sys.modules))"
     )
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    # The Python app isn't installed (only the Rust app ships), so point the child at src/.
+    src = str(Path(__file__).resolve().parent.parent / "src")
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(filter(None, [src, os.environ.get("PYTHONPATH")])),
+    }
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env
+    )
     assert out.stdout.strip() == "[]"
 
 

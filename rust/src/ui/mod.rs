@@ -54,6 +54,7 @@ pub enum Msg {
     Clipboard(String),
     YtDlpVersion(String),
     UpdateFound(String),
+    AppUpdateFound(String),
     UpdateDone(bool, String),
     Ffmpeg(bool),
     Sync(bool),
@@ -238,6 +239,11 @@ pub fn run(initial: String) -> i32 {
     app.shutdown();
     drop(terminal);
     restore();
+    if let Some(v) = app.app_update.take() {
+        if crate::engine::update::start_self_upgrade() {
+            println!("Updating Carrot Leaf to {v} in the background. It's ready next time you run carrot.");
+        }
+    }
     0
 }
 
