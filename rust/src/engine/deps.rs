@@ -223,5 +223,64 @@ pub fn exe_in(name: &str, dir: Option<&str>) -> String {
 }
 
 pub fn yt_dlp() -> String {
-    exe_in("yt-dlp", None)
+    tool_path("yt-dlp").map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|| "yt-dlp".into())
+}
+
+/// Deno, which yt-dlp needs for full YouTube support.
+pub fn deno() -> Option<PathBuf> {
+    tool_path("deno")
+}
+
+/// A yt-dlp command that knows where Deno is, even when Deno isn't on PATH.
+pub fn yt_dlp_command() -> Command {
+    let mut cmd = Command::new(yt_dlp());
+    if let Some(deno) = deno() {
+        cmd.arg("--js-runtimes").arg(format!("deno:{}", deno.display()));
+    }
+    cmd
+}
+
+/// `name` from the folder Carrot Leaf was installed into, else from PATH.
+pub fn tool_path(name: &str) -> Option<PathBuf> {
+    install_bin_dir().and_then(|d| which_in(name, d.as_os_str())).or_else(|| which(name))
+}
+
+/// The folder holding the yt-dlp and Deno that were installed with Carrot Leaf: a uv tool or
+/// pipx environment, or the scripts folder pip used. Those folders usually aren't on PATH.
+pub fn install_bin_dir() -> Option<PathBuf> {
+    static DIR: LazyLock<Option<PathBuf>> = LazyLock::new(find_install_bin_dir);
+    DIR.clone()
+}
+
+fn find_install_bin_dir() -> Option<PathBuf> {
+    let has_ytdlp = |d: &Path| is_executable(&d.join(format!("yt-dlp{EXE}")));
+    // uv and pipx symlink `carrot` into ~/.local/bin on macOS and Linux: follow it home.
+    let own = std::env::current_exe().ok().and_then(|p| std::fs::canonicalize(p).ok());
+    if let Some(dir) = own.as_deref().and_then(Path::parent) {
+        if has_ytdlp(dir) {
+            return Some(dir.to_path_buf());
+        }
+    }
+    // On Windows they copy the program out instead, so look where they keep environments.
+    let bin = if cfg!(windows) { "Scripts" } else { "bin" };
+    let home = dirs::home_dir().unwrap_or_default();
+    let env_dir = |v: &str| std::env::var_os(v).map(PathBuf::from);
+    let roots = [
+        env_dir("UV_TOOL_DIR"),
+        env_dir("XDG_DATA_HOME").map(|d| d.join("uv").join("tools")),
+        Some(home.join(".local").join("share").join("uv").join("tools")),
+        dirs::data_dir().map(|d| d.join("uv").join("data").join("tools")),
+        env_dir("PIPX_HOME").map(|d| d.join("venvs")),
+        Some(home.join(".local").join("pipx").join("venvs")),
+        Some(home.join(".local").join("share").join("pipx").join("venvs")),
+        Some(home.join("pipx").join("venvs")),
+        dirs::data_dir().map(|d| d.join("pipx").join("venvs")),
+    ];
+    roots.into_iter().flatten().map(|r| r.join("carrot-leaf").join(bin)).find(|d| has_ytdlp(d))
+}
+
+/// Whether `dir` is inside a uv tool environment.
+pub fn in_uv_tools(dir: &str) -> bool {
+    let d = dir.replace('\\', "/");
+    d.contains("/uv/tools/") || d.contains("/uv/data/tools/")
 }

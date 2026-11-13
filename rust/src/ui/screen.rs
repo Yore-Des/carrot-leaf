@@ -121,6 +121,8 @@ pub struct App {
     new_videos: usize,
     syncing: bool,
     update_version: Option<String>,
+    /// A newer Carrot Leaf; it installs when the app quits.
+    pub app_update: Option<String>,
     ytdlp_version: String,
     getting_ffmpeg: bool,
     queue_scroll: usize,
@@ -184,6 +186,7 @@ impl App {
             new_videos: 0,
             syncing: false,
             update_version: None,
+            app_update: None,
             ytdlp_version: String::new(),
             getting_ffmpeg: false,
             queue_scroll: 0,
@@ -321,6 +324,7 @@ impl App {
             Msg::Clipboard(url) => self.clipboard_found(url),
             Msg::YtDlpVersion(v) => self.ytdlp_version = v,
             Msg::UpdateFound(v) => self.update_version = Some(v),
+            Msg::AppUpdateFound(v) => self.app_update = Some(v),
             Msg::UpdateDone(ok, output) => {
                 if ok {
                     self.update_version = None;
@@ -1199,6 +1203,9 @@ impl App {
             if let Some(newer) = update::update_available(&v) {
                 let _ = tx.send(Msg::UpdateFound(newer));
             }
+            if let Some(newer) = update::app_update_available() {
+                let _ = tx.send(Msg::AppUpdateFound(newer));
+            }
         });
     }
 
@@ -1527,6 +1534,9 @@ impl App {
         let dim = fg(t.muted.over(t.bg, 0.6));
         let muted = fg(t.muted);
         let mut bits: Vec<Vec<Span<'static>>> = vec![vec![Span::styled("carrot", dim), Span::styled(format!(" {}", crate::VERSION), muted)]];
+        if let Some(v) = &self.app_update {
+            bits.push(vec![Span::styled(format!("carrot-leaf {v} installs when you quit"), bold(t.primary))]);
+        }
         if let Some(v) = &self.update_version {
             bits.push(vec![Span::styled(format!("yt-dlp {v} available · press u"), bold(t.warning))]);
         } else if !self.ytdlp_version.is_empty() {

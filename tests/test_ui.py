@@ -69,7 +69,7 @@ async def test_paste_then_download(fakes):
         screen = app.screen
         screen.query_one("#url").post_message(events.Paste(URL))
         assert await settle(pilot, lambda: screen.info is not None)
-        assert app.focused.id == "download"
+        assert await settle(pilot, lambda: app.focused and app.focused.id == "download")
         await pilot.press("d")
         assert await settle(pilot, lambda: screen.jobs and screen.jobs[0].state == runner.DONE)
         assert fakes["run"][0].fmt == "mp4"

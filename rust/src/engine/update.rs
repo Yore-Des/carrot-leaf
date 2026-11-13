@@ -1,12 +1,15 @@
-//! Check for a newer yt-dlp and upgrade it in place.
+//! Check for newer yt-dlp and Carrot Leaf releases and upgrade them in place.
 //!
 //! The Rust build calls the `yt-dlp` program rather than importing it, so the upgrade goes
-//! through whatever installed that program: Homebrew, pipx, uv, pip, or yt-dlp's own `-U`.
+//! through whatever installed that program: Carrot Leaf's own environment, Homebrew, pipx,
+//! uv, pip, or yt-dlp's own `-U`. Carrot Leaf upgrades itself when you quit, if it was
+//! installed with uv or pipx.
 
 use super::deps;
 use std::process::{Command, Stdio};
 
 pub const PYPI_URL: &str = "https://pypi.org/pypi/yt-dlp/json";
+pub const APP_PYPI_URL: &str = "https://pypi.org/pypi/carrot-leaf/json";
 
 /// yt-dlp's version, from the program itself. Asking it costs a Python startup, so the
 /// answer is kept next to the settings, keyed by the program's path and modified time.
@@ -52,7 +55,11 @@ pub fn key(version: &str) -> Vec<u64> {
 }
 
 pub fn latest_version() -> Option<String> {
-    let resp = ureq::get(PYPI_URL).timeout(std::time::Duration::from_secs(4)).call().ok()?;
+    latest_from(PYPI_URL)
+}
+
+fn latest_from(url: &str) -> Option<String> {
+    let resp = ureq::get(url).timeout(std::time::Duration::from_secs(4)).call().ok()?;
     let v: serde_json::Value = resp.into_json().ok()?;
     v["info"]["version"].as_str().map(String::from)
 }
@@ -64,15 +71,39 @@ pub fn update_available(installed: &str) -> Option<String> {
 }
 
 pub fn upgrade_command() -> Vec<String> {
-    let exe = std::fs::canonicalize(deps::yt_dlp()).unwrap_or_default().to_string_lossy().replace('\\', "/");
+    let ytdlp = std::fs::canonicalize(deps::yt_dlp()).unwrap_or_default();
+    let exe = ytdlp.to_string_lossy().replace('\\', "/");
     let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect();
+    // yt-dlp that came with Carrot Leaf: upgrade just it, inside that environment.
+    if let Some(dir) = deps::install_bin_dir() {
+        if ytdlp.parent() == std::fs::canonicalize(&dir).ok().as_deref() {
+            let dir_s = dir.to_string_lossy().into_owned();
+            if deps::in_uv_tools(&dir_s) {
+                if let Some(uv) = deps::which("uv") {
+                    let python = dir.join(if cfg!(windows) { "python.exe" } else { "python" });
+                    return vec![
+                        uv.to_string_lossy().into(),
+                        "pip".into(),
+                        "install".into(),
+                        "--python".into(),
+                        python.to_string_lossy().into(),
+                        "-U".into(),
+                        "yt-dlp[default]".into(),
+                    ];
+                }
+            }
+            if dir_s.replace('\\', "/").contains("/pipx/") {
+                return s(&["pipx", "runpip", "carrot-leaf", "install", "-U", "yt-dlp[default]"]);
+            }
+        }
+    }
     if exe.contains("/Cellar/") || exe.contains("/homebrew/") {
         return s(&["brew", "upgrade", "yt-dlp"]);
     }
     if exe.contains("/pipx/venvs/") {
         return s(&["pipx", "upgrade", "yt-dlp"]);
     }
-    if exe.contains("/uv/tools/") {
+    if deps::in_uv_tools(&exe) {
         return s(&["uv", "tool", "upgrade", "yt-dlp"]);
     }
     vec![deps::yt_dlp(), "-U".into()]
@@ -88,4 +119,52 @@ pub fn upgrade() -> (bool, String) {
         }
         Err(e) => (false, e.to_string()),
     }
+}
+
+// ---------- Carrot Leaf itself ----------
+
+/// The newer Carrot Leaf on PyPI, or None if up to date, offline, or not self-updatable.
+pub fn app_update_available() -> Option<String> {
+    if std::env::var_os("CARROT_NO_AUTO_UPDATE").is_some() {
+        return None;
+    }
+    self_upgrade_command()?;
+    let latest = latest_from(APP_PYPI_URL)?;
+    (key(&latest) > key(crate::VERSION)).then_some(latest)
+}
+
+/// How to upgrade this install, or None for installs we shouldn't touch (pip, dev builds).
+pub fn self_upgrade_command() -> Option<Vec<String>> {
+    let dir = deps::install_bin_dir()?.to_string_lossy().replace('\\', "/");
+    let (tool, args): (&str, &[&str]) = if deps::in_uv_tools(&dir) {
+        ("uv", &["tool", "upgrade", "carrot-leaf"])
+    } else if dir.contains("/pipx/") {
+        ("pipx", &["upgrade", "carrot-leaf"])
+    } else {
+        return None;
+    };
+    let exe = deps::which(tool)?;
+    Some(std::iter::once(exe.to_string_lossy().into_owned()).chain(args.iter().map(|a| a.to_string())).collect())
+}
+
+/// Start the upgrade detached from this process, so quitting isn't held up. True if started.
+pub fn start_self_upgrade() -> bool {
+    let Some(cmd) = self_upgrade_command() else {
+        return false;
+    };
+    let mut c = Command::new(&cmd[0]);
+    c.args(&cmd[1..]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        c.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        c.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+    c.spawn().is_ok()
 }
