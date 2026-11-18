@@ -64,25 +64,22 @@ Carrot then fetches it in the background the first time you open it.
 
 ## Keys
 
-| Get videos | |
+| Key | Does |
 | --- | --- |
+| **Get videos** | |
 | `d` | Download at the best quality, as MP4 |
 | `c` | Convert: pick a format and quality, a clip, subtitles and more |
 | `e` | Pick which videos of a playlist or channel to get |
 | `v` | Load the link Carrot found on your clipboard |
 | `x` | Cancel the current download |
 | `p` | Pause the queue. Running downloads finish, waiting ones hold |
-
-| Your library | |
-| --- | --- |
+| **Your library** | |
 | `h` | History of everything you've saved |
 | `a` | Follow this playlist or channel, or this video's channel |
 | `w` | What's new in everything you follow |
 | `/` | Search what was said in your downloads |
 | `o` | Show the last download in Finder or Explorer |
-
-| App | |
-| --- | --- |
+| **App** | |
 | `ctrl+t` | Switch between Download and Convert files |
 | `s` | Settings: download folder, file names, cookies |
 | `t` | Pick a theme |
