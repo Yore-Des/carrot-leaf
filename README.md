@@ -240,13 +240,12 @@ colours, so they look the same in every terminal. Press `t` for the others.
 **Updates.** Carrot checks PyPI while it's open. If there's a new release, it installs it
 after you quit. Set `CARROT_NO_AUTO_UPDATE=1` to turn this off.
 
-**Where things are kept.** History (`history.jsonl`) and captions (`transcripts/`) sit in
-the same folder as `config.toml`.
+**Where things are kept.** Settings (`config.toml`), history (`history.jsonl`) and
+captions (`transcripts/`) live in one folder, with Carrot's ffmpeg in an `ffmpeg/` folder:
 
-| | macOS | Linux | Windows |
-| --- | --- | --- | --- |
-| Settings | `~/Library/Application Support/carrot-leaf/config.toml` | `~/.config/carrot-leaf/config.toml` | `%LOCALAPPDATA%\carrot-leaf\config.toml` |
-| ffmpeg | `~/Library/Application Support/carrot-leaf/ffmpeg` | `~/.local/share/carrot-leaf/ffmpeg` | `%LOCALAPPDATA%\carrot-leaf\ffmpeg` |
+- macOS: `~/Library/Application Support/carrot-leaf/`
+- Linux: `~/.config/carrot-leaf/`, and ffmpeg in `~/.local/share/carrot-leaf/`
+- Windows: `%LOCALAPPDATA%\carrot-leaf\`
 
 ## Troubleshooting
 
