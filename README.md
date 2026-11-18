@@ -294,12 +294,7 @@ cd .. && uv build                # the PyPI wheel (maturin), as users get it
 
 The app is the Rust program in `rust/`. It ships on PyPI as a platform wheel that holds
 the `carrot` binary and pulls in yt-dlp and Deno as ordinary dependencies. The original
-Python version in `src/carrot_leaf` is kept as a reference with its tests:
-
-```sh
-uv sync && uv run pytest            # offline tests
-CARROT_LIVE=1 uv run pytest         # also run real downloads
-```
+Python version was retired; it lives on at the `python-final` tag.
 
 To release, bump `version` in `pyproject.toml` and `rust/Cargo.toml` and push a
 `vX.Y.Z` tag. GitHub Actions builds wheels for Linux, macOS and Windows and publishes

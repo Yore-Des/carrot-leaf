@@ -6,26 +6,6 @@ on:
   pull_request:
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: ubuntu-latest, python: "3.10" }
-          - { os: ubuntu-latest, python: "3.13" }
-          - { os: macos-latest, python: "3.12" }
-          - { os: windows-latest, python: "3.12" }
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: ${{ matrix.python }}
-      - run: uv sync --locked
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run pytest -q
-
   wheel:
     # Build the wheel users get and install it the way they do, then check the Rust app
     # finds the yt-dlp installed next to it (uv copies the program out on Windows).

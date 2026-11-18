@@ -9,9 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Textual screenshots
-Carrot_Leaf_*.svg
-
 # Rust port build output and macOS metadata
 rust/target/
 .DS_Store
