@@ -7,269 +7,291 @@
  ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝
 </pre>
 
-Carrot downloads and converts videos in your terminal. Paste a link from YouTube or
-any of the 1,300+ sites yt-dlp knows, a whole playlist or channel included, then press
-`d` to save it as MP4 or `c` to pick a format, cut a clip, add subtitles or skip sponsors. It also converts files already on your computer: drop in videos, songs or
-photos and turn them into any of 51 formats. It runs on
-[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://ffmpeg.org), and the
-app itself is a single Rust program built with [ratatui](https://ratatui.rs).
+**Download and convert video in your terminal.** Paste a link from YouTube or any of
+1,300+ other sites, press `d`, and it's saved. Carrot also converts files already on your
+computer to 51 formats.
+
+[![PyPI](https://img.shields.io/pypi/v/carrot-leaf)](https://pypi.org/project/carrot-leaf/)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+[Install](#install) · [Quick start](#quick-start) · [Keys](#keys) · [Features](#features) ·
+[Command line](#command-line) · [Formats](#formats) · [Settings and files](#settings-and-files) ·
+[Troubleshooting](#troubleshooting) · [Development](#development)
+
+---
 
 ## Install
 
-macOS and Linux:
+**macOS and Linux**
 
 ```sh
 curl -LsSf https://raw.githubusercontent.com/Yore-Des/carrot-leaf/main/install.sh | sh
 ```
 
-Windows, in PowerShell:
+**Windows** (PowerShell)
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Yore-Des/carrot-leaf/main/install.ps1 | iex"
 ```
 
-The script installs [uv](https://docs.astral.sh/uv/) if it's missing, installs Carrot
-Leaf (the app plus its own copy of yt-dlp and Deno), then downloads ffmpeg (about 50 MB).
-You don't need Python, ffmpeg or anything else set up first. Set `CARROT_LEAF_NO_FFMPEG=1` to skip the
-ffmpeg download; Carrot Leaf then gets it in the background the first time you open it.
+The script installs everything Carrot needs: [uv](https://docs.astral.sh/uv/), the app,
+its own yt-dlp and Deno, and ffmpeg (about 50 MB). You don't need anything set up first.
 
-If you already use uv or pipx:
+<details>
+<summary>Already use uv or pipx?</summary>
 
 ```sh
 uv tool install carrot-leaf
-pipx install carrot-leaf      # needs Python 3.10+ for yt-dlp
-carrot setup                  # optional: download ffmpeg now instead of on first launch
+pipx install carrot-leaf      # needs Python 3.10+
+carrot setup                  # optional: get ffmpeg now instead of on first launch
 ```
 
-## Use it
+To skip the ffmpeg download in the install script, set `CARROT_LEAF_NO_FFMPEG=1`.
+Carrot then fetches it in the background the first time you open it.
 
-```sh
-carrot                 # open the app
-carrot <url>           # open with a link already loaded
-carrot <file>          # open Convert files with that file in it
-carrot get <url>       # download without opening the app (see below)
-carrot convert <file> --format webp   # convert without opening the app
-carrot sync            # get new videos from channels and playlists you follow
-carrot setup           # download ffmpeg, and list the formats it can make
-carrot update          # update yt-dlp
-carrot --version
-```
+</details>
 
-Paste a link and the title, length, upload date and a thumbnail appear. The bottom bar
-lists every key:
+## Quick start
 
-| Key   | Does                                                       |
-| ----- | ---------------------------------------------------------- |
-| `d`   | Download at the best quality, as MP4                       |
-| `c`   | Convert: pick a format and quality, plus a clip, subtitles and more |
-| `e`   | Pick which videos of a playlist or channel to get          |
-| `v`   | Load the link Carrot found on your clipboard               |
-| `x`   | Cancel the current download (or use a row's cancel button)   |
-| `p`   | Pause the queue: running downloads finish, waiting ones hold |
-| `h`   | History: open, find, copy the link of or re-get anything saved |
-| `a`   | Follow this playlist or channel (or the channel of this video) |
-| `w`   | Following: what's new in everything you follow, and get it  |
-| `/`   | Search what was said in everything you've downloaded        |
-| `l`   | List supported sites. Search by name, or paste a link to check it |
-| `s`   | Settings: download folder and browser cookies              |
-| `t`   | Pick a theme                                               |
-| `o`   | Show the last download in Finder or Explorer               |
-| `u`   | Update yt-dlp                                              |
-| `ctrl+t` | Switch between Download and Convert files               |
-| `tab` | Leave the URL bar so the letter keys work                  |
-| `esc` | Back to the URL bar                                        |
-| `q`   | Quit                                                       |
+1. Run `carrot`.
+2. Paste a link. The title, length, upload date and thumbnail appear.
+3. Press `tab`, then `d` for the best MP4 or `c` to choose a format.
 
-While the URL bar has focus, letters go into the link. Press `tab` first, or click a key
-in the bottom bar.
+> [!TIP]
+> While the URL bar has focus, letters type into the link. Press `tab` to use the keys,
+> `esc` to go back. You can also click any key in the bottom bar.
 
-You can paste the next link while a download runs. Downloads queue up and run one at a
-time, or up to four at once if you pick that in Settings (`s`). When Carrot is in the
-background and the queue finishes, you get a system notification.
+## Keys
 
-Copy a link anywhere, switch back to Carrot, and it offers that link: press `v` to load
-it. Turn that off in Settings if you'd rather it didn't look.
+| Get videos | |
+| --- | --- |
+| `d` | Download at the best quality, as MP4 |
+| `c` | Convert: pick a format and quality, a clip, subtitles and more |
+| `e` | Pick which videos of a playlist or channel to get |
+| `v` | Load the link Carrot found on your clipboard |
+| `x` | Cancel the current download |
+| `p` | Pause the queue. Running downloads finish, waiting ones hold |
+
+| Your library | |
+| --- | --- |
+| `h` | History of everything you've saved |
+| `a` | Follow this playlist or channel, or this video's channel |
+| `w` | What's new in everything you follow |
+| `/` | Search what was said in your downloads |
+| `o` | Show the last download in Finder or Explorer |
+
+| App | |
+| --- | --- |
+| `ctrl+t` | Switch between Download and Convert files |
+| `s` | Settings: download folder, file names, cookies |
+| `t` | Pick a theme |
+| `l` | List supported sites, or paste a link to check it |
+| `u` | Update yt-dlp |
+| `q` | Quit |
+
+## Features
+
+### Queue and clipboard
+
+- Paste the next link while one downloads. Downloads run one at a time, or up to four at
+  once if you set that in Settings.
+- When Carrot is in the background and the queue finishes, you get a system notification.
+- Copy a link anywhere and switch back to Carrot. It offers the link, and `v` loads it.
+  You can turn this off in Settings.
 
 ### Playlists and channels
 
-Paste a playlist or channel link and the card lists how many videos it has. `d` downloads
-them all, `c` picks a format for all of them, and `e` opens a list where you tick the ones
-you want (`a` all, `n` none, or type a number to keep the first N, which on a channel are
-the newest). Up to 500 are listed. They land in a folder named after the playlist,
-numbered in playlist order when your file name uses `{index}`.
+- The card shows how many videos the link has. `d` gets them all, `c` sets one format for
+  all of them.
+- `e` opens a list to tick the ones you want. `a` ticks all, `n` none, and a number keeps
+  the first N (the newest, on a channel). Up to 500 are listed.
+- Videos land in a folder named after the playlist, numbered in order if your file name
+  uses `{index}`.
 
-### Extras in the Convert dialog
+### Convert options
 
-Under the format and quality lists, depending on the video:
+These sit under the format list in the Convert dialog (`c`), depending on the video.
 
-- **Clip**: a start and end time (`1:30`, `90` or `1m30s`) to keep only that part. Video
-  clips are cut while downloading, so you don't fetch the whole thing; a clip that isn't
-  re-encoded starts at the nearest keyframe.
-- **Subtitles**: inside the video (MP4, MKV, WebM) or as a separate `.srt`, in the
-  languages you list (`en`, `en,de`). YouTube's automatic captions count.
-- **SponsorBlock** (YouTube): cut sponsor, self-promotion and "like and subscribe" segments
-  out, or keep them and mark them as chapters. The segments come from
-  [SponsorBlock](https://sponsor.ajay.app)'s community list.
-- **One file per chapter**: a video with chapters, an album upload say, becomes a folder
-  of numbered tracks.
-- **Even out the volume** (audio): normalises loudness to the -16 LUFS podcasts use.
+| Option | What it does |
+| --- | --- |
+| Clip | Keeps only a start and end time (`1:30`, `90` or `1m30s`). The cut happens while downloading, so you don't fetch the whole video. |
+| Subtitles | Puts them inside the video (MP4, MKV, WebM) or in a separate `.srt`, in any languages (`en,de`). YouTube's automatic captions count. |
+| SponsorBlock | YouTube only. Removes sponsor, self-promo and "like and subscribe" segments, or marks them as chapters. Uses [SponsorBlock](https://sponsor.ajay.app)'s community list. |
+| One file per chapter | Splits a video with chapters, like an album upload, into numbered tracks. |
+| Even out the volume | Audio only. Normalises loudness to -16 LUFS, the podcast standard. |
 
-The dialog remembers your subtitle, SponsorBlock and volume picks for next time. The
-Options line folds them away and says what's switched on; press `o` to open it.
+The dialog remembers these picks for next time. Press `o` to open the Options section.
 
-**Pick a clip by eye.** The Clip row has a **pick** button that opens a big frame of the
-video and a timeline. `←` `→` step through it (`shift` jumps 10 seconds), `[` marks the
-start, `]` the end, and Enter uses them. For YouTube the frames come from the storyboards
-the site makes for its own scrub bar, so nothing is downloaded; for a file on your computer
-ffmpeg grabs them.
+**Pick a clip by eye.** The **pick** button on the Clip row opens a large frame and a
+timeline:
+
+| `←` `→` | `shift` + `←` `→` | `[` | `]` | `enter` |
+| --- | --- | --- | --- | --- |
+| Step | Jump 10 s | Mark start | Mark end | Use them |
+
+On YouTube the frames come from the site's own scrub-bar previews, so nothing downloads.
+For files on your computer, ffmpeg grabs them.
 
 ### Presets
 
-Set up the Convert dialog the way you like (say MP3, 128k, even volume, no sponsors) and
-press **+ save** at the top to keep it as a preset. Presets sit as chips along the top of
-the dialog; press its number (`1`–`9`) to fill in everything at once. When you save one you
-can make it the default for that site: from then on `d` on a YouTube link uses it instead of
-best MP4, and the card says so.
+- Set up the Convert dialog the way you like, then press **+ save**.
+- Presets show as chips along the top of the dialog. Press `1` to `9` to apply one.
+- Make a preset the default for a site, and `d` on that site uses it instead of best MP4.
 
 ### Following channels and playlists
 
-Press `a` on a playlist or channel, or on any video to follow its channel, and pick how new
-videos should be saved. Carrot remembers what's already there, and each time it starts it
-checks for anything newer. The status line says when there's something new; `w` lists
-everything you follow, Enter gets the new videos of one, `a` gets them all, `s` checks now
-and Delete unfollows. New videos land in a folder named after the channel.
-
-`carrot sync` does the same without the app, so a scheduled task or cron job can keep you
-up to date: `carrot sync --check` only says what's new.
+- Press `a` and choose how new videos should be saved. Carrot checks for new ones each
+  time it starts, and the status line tells you when something arrives.
+- `w` lists everything you follow. `enter` gets one's new videos, `a` gets all of them,
+  `s` checks now and `delete` unfollows.
+- New videos land in a folder named after the channel.
+- `carrot sync` does the same from cron or a scheduled task. `carrot sync --check` only
+  reports what's new.
 
 ### Search what was said
 
-Every video you download keeps its captions (the creator's, or YouTube's automatic ones) in
-a small `transcripts` folder next to the settings. Press `/` and type: hits come up with
-the time they were said and the lines around them. Enter plays the file from that moment
-(in mpv, IINA or VLC if you have one; otherwise it opens and tells you where to skip to),
-`c` cuts the 30 seconds around it into a new file, and `o` shows the file. Words can come in
-any order; put a phrase in quotes to find it exactly. Turn this off in Settings if you don't
-want captions kept.
-
-### Formats
-
-| Video                     | Audio                              |
-| ------------------------- | ---------------------------------- |
-| MP4, MKV, WebM, MOV, GIF  | MP3, M4A, Opus, FLAC, WAV, OGG     |
-| best, 2160p … 360p        | best, 320 / 192 / 128 kbps         |
-
-The quality list only shows resolutions the video has. Where the format allows it, the
-file gets the title, artist and cover art.
-
-"Best" MP4 (what `d` downloads) is the best H.264 copy, which plays in QuickTime, phones
-and TVs. On YouTube that tops out at 1080p. Above that YouTube only has VP9 or AV1, so
-picking 1440p or 2160p MP4 in Convert copies that video into the MP4 as-is. It's fast and
-full quality, but some older players won't open it. Carrot Leaf never re-encodes a
-download unless you pick MOV at a set height or a GIF.
+- Carrot keeps the captions of every video you download, so you can search them.
+- Press `/` and type. Words can be in any order. Use quotes for an exact phrase.
+- Each hit shows when it was said. `enter` plays from that moment (in mpv, IINA or VLC
+  if you have one), `c` cuts the 30 seconds around it into a new file, `o` shows the file.
+- You can turn caption keeping off in Settings.
 
 ### Convert files on your computer
 
-Press `ctrl+t` (or click **Convert files**) for the second tab. Drag files from Finder or
-Explorer into the window, paste their paths, or press `f` to browse. You can add several
-at once, and mix videos, audio and photos. Dropping a file on the Download tab also
-switches to Convert files.
+- Press `ctrl+t` for the Convert files tab. Drag in files, paste their paths, or press `f`
+  to browse. Videos, audio and photos can be mixed.
+- `c` picks a format. Video, Audio, Image, and Frames, which saves a video as a folder of
+  pictures. Clip and volume options work here too.
+- For images, set a max size in KB and Carrot lowers the quality until the file fits.
+  You can also strip EXIF and location data before sharing.
+- The new file lands next to the original, which Carrot never changes. If the streams
+  already fit the new format, Carrot copies them instead of re-encoding. That takes
+  seconds and loses nothing, and the dialog tells you which you're getting.
+- `r` removes the highlighted file, `x` cancels a conversion.
 
-Press `c` to pick a format. The tabs depend on what you added: Video, Audio, Image, and
-Frames, which saves a video as a folder of pictures. Videos and songs can be clipped and
-songs evened out, as above. For images you can set a **max size** in KB (JPG, WebP, AVIF,
-HEIC and JPEG XL lower their quality until the file fits) and **remove EXIF and
-location** data before you share a photo. With a mixed batch, the dialog says
-how many of the files each pick applies to. `r` removes the highlighted file, `x` cancels
-a conversion, and conversions run alongside downloads.
-
-| Video | Audio | Image |
-| ----- | ----- | ----- |
-| MP4, MKV, WebM, MOV, M4V, AVI, TS, FLV, WMV, MPG, 3GP, OGV, GIF, animated PNG, animated WebP | MP3, M4A, AAC, Opus, OGG, FLAC, ALAC, WAV, AIFF, WMA, AC3, E-AC3, MP2, WavPack, TTA, CAF, AU, MKA | JPG, PNG, WebP, AVIF, JPEG XL, HEIC, JPEG 2000, TIFF, BMP, GIF, TGA, QOI, EXR, HDR, PPM, PCX, SGI, DPX |
-
-Converted files land next to the original, and the original is never touched. When the
-streams already fit the new format, Carrot Leaf copies them instead of re-encoding, which
-takes seconds and loses nothing. The dialog says which one you're getting.
-
-### Where files go
-
-Downloads land in your Downloads folder as `Title [video-id].ext`. Press `s` to pick
-another folder, or to change how files are named: write a template from `{title}`,
-`{id}`, `{channel}`, `{uploader}`, `{date}`, `{year}`, `{site}`, `{height}`, `{playlist}`
-and `{index}`, with `/` for folders. `{channel}/{date} {title}` files each video under its
-channel. Settings shows an example name as you type. If a file with that name already
-exists, the new one becomes `Title [video-id] (2).ext`.
-
-Everything you download or convert goes into your history (`h`), kept next to the
-settings file as `history.jsonl`. From there, Enter opens a file, `o` shows it in its
-folder, `r` loads the link again so you can get it in another format, `y` copies the link,
-and Delete forgets an entry (the file stays).
-
-Settings, including your theme, live in:
-
-- macOS: `~/Library/Application Support/carrot-leaf/config.toml`
-- Linux: `~/.config/carrot-leaf/config.toml`
-- Windows: `%LOCALAPPDATA%\carrot-leaf\config.toml`
-
-### Without the app
-
-`carrot get` and `carrot convert` do the same work from a script or a shell. Progress goes
-to stderr and each saved path to stdout, so the result can feed another command:
+## Command line
 
 ```sh
-carrot get https://youtu.be/aqz-KE-bpKQ                       # best MP4
+carrot                    # open the app
+carrot <url>              # open with a link loaded
+carrot <file>             # open Convert files with that file
+carrot get <url>          # download without the app
+carrot convert <file>     # convert without the app
+carrot sync               # get new videos from what you follow
+carrot setup              # download ffmpeg and list the formats it can make
+carrot update             # update yt-dlp
+```
+
+`get` and `convert` print progress to stderr and each saved path to stdout, so you can
+pipe the result into another command. They use the folder, file names and cookies from
+the app's Settings.
+
+```sh
 carrot get URL --format mp3 --quality 320 --normalize
 carrot get URL --start 1:30 --end 2:00 --format gif --quality 360
 carrot get URL --subs srt --sub-langs en,de --sponsorblock remove
 carrot get PLAYLIST_URL --format m4a --latest 10 --name '{index} - {title}'
-carrot convert clip.mov --format mp4
 carrot convert *.heic --format jpg --max-kb 500 --strip-metadata
 mpv "$(carrot get URL --quiet)"
 ```
 
-Run `carrot get --help` or `carrot convert --help` for every option. Settings you made in
-the app (folder, file names, cookies) apply here too.
+Run `carrot get --help` or `carrot convert --help` for every option.
 
-### Themes
+## Formats
 
-Carrot and Carrot light are the defaults. Both use only the 256 standard terminal
-colours, so they look the same in macOS Terminal as in iTerm2, Ghostty or Kitty. Press
-`t` to try the others. The app remembers your pick.
+### Downloads
 
-### Videos that need you signed in
+| Video | Audio |
+| --- | --- |
+| MP4, MKV, WebM, MOV, GIF | MP3, M4A, Opus, FLAC, WAV, OGG |
+| best, 2160p to 360p | best, 320, 192, 128 kbps |
 
-Age-restricted and members-only videos need a YouTube login. When Carrot Leaf hits one,
-it offers to borrow the cookies from a browser where you're signed in: Chrome, Firefox,
-Safari, Edge, Brave, Opera, Vivaldi or Chromium. Cookies stay off until you pick a
-browser, and you can switch them off again in Settings. On a Mac, expect a Keychain
-prompt the first time.
+- The quality list only shows resolutions the video actually has.
+- Files get the title, artist and cover art where the format allows.
+- Carrot never re-encodes a download, except for GIF or MOV at a set height.
 
-YouTube sometimes asks you to prove you're not a bot. That happens after a lot of
-requests from one connection, not because of the video, and it usually clears within an
-hour. Browser cookies get you past it right away.
+> [!NOTE]
+> Best MP4, which `d` downloads, is H.264, so it plays in QuickTime and on phones and
+> TVs. On YouTube that tops out at 1080p. Picking 1440p or 2160p MP4 copies YouTube's
+> VP9 or AV1 video into the MP4 as is. That's fast and full quality, but some older
+> players won't open it.
 
-### When downloads break
+### Converting files
 
-Sites change how they serve video, YouTube more than most, and yt-dlp ships a fix every
-few weeks. Carrot Leaf checks for a new yt-dlp at startup and tells you when one is out.
-Press `u` or run `carrot update` to install it.
+| Type | Formats |
+| --- | --- |
+| Video (15) | MP4, MKV, WebM, MOV, M4V, AVI, TS, FLV, WMV, MPG, 3GP, OGV, GIF, animated PNG, animated WebP |
+| Audio (18) | MP3, M4A, AAC, Opus, OGG, FLAC, ALAC, WAV, AIFF, WMA, AC3, E-AC3, MP2, WavPack, TTA, CAF, AU, MKA |
+| Image (18) | JPG, PNG, WebP, AVIF, JPEG XL, HEIC, JPEG 2000, TIFF, BMP, GIF, TGA, QOI, EXR, HDR, PPM, PCX, SGI, DPX |
 
-### Updates
+## Settings and files
 
-Carrot Leaf updates itself. While it's open, it checks PyPI for a newer release. If it
-finds one, it installs it in the background after you quit, and your next launch runs
-the new version. This works for the install script, `uv tool` and `pipx`. Set
-`CARROT_NO_AUTO_UPDATE=1` to turn it off.
+**File names.** Downloads go to your Downloads folder as `Title [video-id].ext`. In
+Settings (`s`) you can change the folder and build a name from `{title}`, `{id}`,
+`{channel}`, `{uploader}`, `{date}`, `{year}`, `{site}`, `{height}`, `{playlist}` and
+`{index}`. A `/` makes a folder, so `{channel}/{date} {title}` files each video under its
+channel. If the name is taken, Carrot adds ` (2)`.
 
-### ffmpeg, Deno and image plugins
+**History.** `h` lists everything you've downloaded or converted. `enter` opens a file,
+`o` shows it in its folder, `r` loads the link again to get another format, `y` copies the
+link, and `delete` forgets the entry. The file stays.
 
-Converting needs ffmpeg, and YouTube needs Deno to run its JavaScript. Deno ships with
-the package. The installer downloads Carrot Leaf's own ffmpeg build, and if you already
-have ffmpeg, Carrot Leaf uses both: yours for anything it can do, its own for formats
-yours can't make (Homebrew's ffmpeg has no WebP or Theora, for example). JPEG XL and
-HEIC, which no common ffmpeg build writes, go through libjxl's `cjxl` and libheif's
-`heif-enc` when they're installed (`brew install jpeg-xl libheif`, for example). If a format still can't be made on your
-machine, the dialog shows it greyed out with what it needs.
+**Themes.** Carrot and Carrot light, the defaults, use only the 256 standard terminal
+colours, so they look the same in every terminal. Press `t` for the others.
+
+**Updates.** Carrot checks PyPI while it's open. If there's a new release, it installs it
+after you quit. Set `CARROT_NO_AUTO_UPDATE=1` to turn this off.
+
+**Where things are kept.** History (`history.jsonl`) and captions (`transcripts/`) sit in
+the same folder as `config.toml`.
+
+| | macOS | Linux | Windows |
+| --- | --- | --- | --- |
+| Settings | `~/Library/Application Support/carrot-leaf/config.toml` | `~/.config/carrot-leaf/config.toml` | `%LOCALAPPDATA%\carrot-leaf\config.toml` |
+| ffmpeg | `~/Library/Application Support/carrot-leaf/ffmpeg` | `~/.local/share/carrot-leaf/ffmpeg` | `%LOCALAPPDATA%\carrot-leaf\ffmpeg` |
+
+## Troubleshooting
+
+<details>
+<summary><b>A video says I need to sign in</b></summary>
+
+Age-restricted and members-only videos need a YouTube login. Carrot offers to borrow
+cookies from a browser where you're signed in: Chrome, Firefox, Safari, Edge, Brave,
+Opera, Vivaldi or Chromium. Cookies stay off until you choose a browser, and you can turn
+them off in Settings. On a Mac, expect a Keychain prompt the first time.
+
+</details>
+
+<details>
+<summary><b>YouTube asks me to prove I'm not a bot</b></summary>
+
+That comes from many requests on one connection, not from the video. It usually clears
+within an hour. Browser cookies (see above) get you past it right away.
+
+</details>
+
+<details>
+<summary><b>Downloads stopped working</b></summary>
+
+Sites change how they serve video, and yt-dlp ships fixes every few weeks. Carrot checks
+for a new yt-dlp at startup and tells you when one is out. Press `u` or run
+`carrot update`.
+
+</details>
+
+<details>
+<summary><b>A format is greyed out</b></summary>
+
+The dialog shows what that format needs. Carrot uses your own ffmpeg where it can and its
+bundled build for the rest (Homebrew's ffmpeg has no WebP or Theora, for example). JPEG XL
+and HEIC need libjxl's `cjxl` and libheif's `heif-enc`:
+
+```sh
+brew install jpeg-xl libheif
+```
+
+</details>
 
 ## Uninstall
 
@@ -277,33 +299,26 @@ machine, the dialog shows it greyed out with what it needs.
 uv tool uninstall carrot-leaf     # or: pipx uninstall carrot-leaf
 ```
 
-Carrot Leaf's ffmpeg is kept outside the app, so updates don't download it again. To
-remove it too, delete the `ffmpeg` folder next to your settings (see "Where files go"):
-`~/Library/Application Support/carrot-leaf/ffmpeg` on macOS,
-`~/.local/share/carrot-leaf/ffmpeg` on Linux, `%LOCALAPPDATA%\carrot-leaf\ffmpeg` on
-Windows.
+Carrot's ffmpeg is kept outside the app, so updates don't download it again. To remove
+it too, delete the `ffmpeg` folder listed in [Settings and files](#settings-and-files).
 
 ## Development
 
 ```sh
-git clone https://github.com/Yore-Des/carrot-leaf && cd carrot-leaf
-cd rust && cargo run --release   # the app
+git clone https://github.com/Yore-Des/carrot-leaf && cd carrot-leaf/rust
+cargo run --release            # run the app
 cargo test && cargo clippy
-cd .. && uv build                # the PyPI wheel (maturin), as users get it
+cd .. && uv build              # build the PyPI wheel, as users get it
 ```
 
-The app is the Rust program in `rust/`. It ships on PyPI as a platform wheel that holds
-the `carrot` binary and pulls in yt-dlp and Deno as ordinary dependencies. The original
-Python version was retired; it lives on at the `python-final` tag.
+The app is the Rust program in `rust/`, built with [ratatui](https://ratatui.rs) on top of
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://ffmpeg.org). It ships on
+PyPI as a wheel holding the `carrot` binary, with yt-dlp and Deno as dependencies. The
+original Python version lives at the `python-final` tag.
 
-To release, bump `version` in `pyproject.toml` and `rust/Cargo.toml` and push a
-`vX.Y.Z` tag. GitHub Actions builds wheels for Linux, macOS and Windows and publishes
-them to PyPI.
-
-## Please be nice
-
-Only download videos you have the right to download, and follow each site's terms.
+**Releasing.** Bump `version` in `pyproject.toml` and `rust/Cargo.toml`, then push a
+`vX.Y.Z` tag. GitHub Actions builds the wheels and publishes them to PyPI.
 
 ## License
 
-MIT
+MIT. Only download videos you have the right to, and follow each site's terms.
